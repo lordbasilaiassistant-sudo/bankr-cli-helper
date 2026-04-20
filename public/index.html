@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bankr Helper</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface2: #1a1a26;
+      --surface3: #232333;
+      --border: #2a2a3a;
+      --text: #e6e6ee;
+      --text-dim: #8b8ba5;
+      --accent: #6c5ce7;
+      --accent-dim: #4a3fb0;
+      --accent-light: #8a7af0;
+      --green: #00d68f;
+      --red: #ff5a7a;
+      --yellow: #ffc85a;
+      --orange: #ff9d4a;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      overflow: hidden;
+    }
+    button { font-family: inherit; }
+    input, select, textarea { font-family: inherit; color: var(--text); }
+
+    /* --- Sidebar --- */
+    .sidebar {
+      width: 260px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .sb-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sb-header .logo {
+      width: 28px; height: 28px; background: var(--accent); border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: white;
+    }
+    .sb-header h1 { font-size: 15px; color: var(--accent); flex: 1; }
+    .sb-header .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+    }
+    .sb-header .dot.on { background: var(--green); }
+
+    .nav {
+      display: flex; flex-direction: column; padding: 8px;
+      border-bottom: 1px solid var(--border); gap: 2px;
+    }
+    .nav button {
+      text-align: left; padding: 8px 12px; background: transparent;
+      border: none; color: var(--text-dim); border-radius: 6px;
+      cursor: pointer; font-size: 13px;
+    }
+    .nav button:hover { background: var(--surface2); color: var(--text); }
+    .nav button.active { background: var(--accent-dim); color: white; }
+    .nav button .badge {
+      float: right; background: var(--accent); color: white;
+      font-size: 10px; padding: 1px 6px; border-radius: 8px;
+      margin-top: 2px;
+    }
+    .nav button.kill {
+      color: var(--red);
+    }
+    .nav button.kill:hover { background: rgba(255,90,122,0.15); color: var(--red); }
+
+    .threads {
+      flex: 1; overflow-y: auto; padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .threads .section-label {
+      font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+      letter-spacing: 1px; padding: 8px 8px 4px;
+    }
+    .thread {
+      padding: 8px 10px; font-size: 12px; color: var(--text-dim);
+      border-radius: 6px; cursor: pointer; display: flex;
+      justify-content: space-between; align-items: center; margin-bottom: 1px;
+    }
+    .thread:hover { background: var(--surface2); color: var(--text); }
+    .thread.active { background: var(--accent-dim); color: white; }
+    .thread .preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .thread .del { opacity: 0; background: none; border: none; color: var(--red); cursor: pointer; padding: 0 4px; }
+    .thread:hover .del { opacity: 1; }
+
+    .portfolio-widget {
+      padding: 12px 14px; font-size: 11px; color: var(--text-dim);
+      border-top: 1px solid var(--border); min-height: 80px;
+    }
+    .portfolio-widget .row { display: flex; justify-content: space-between; margin: 4px 0; }
+    .portfolio-widget .row .v { color: var(--text); font-weight: 600; }
+    .portfolio-widget .row .v.good { color: var(--green); }
+    .portfolio-widget .row .v.warn { color: var(--yellow); }
+    .portfolio-widget .refresh {
+      background: none; border: none; color: var(--accent-light);
+      cursor: pointer; font-size: 10px; padding: 0; margin-top: 6px;
+    }
+    .portfolio-widget .refresh:hover { text-decoration: underline; }
+
+    /* --- Main --- */
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar {
+      padding: 10px 18px; border-bottom: 1px solid var(--border);
+      background: var(--surface); display: flex;
+      justify-content: space-between; align-items: center; gap: 12px;
+    }
+    .topbar .title { font-size: 13px; color: var(--text-dim); }
+    .topbar .spacer { flex: 1; }
+    .topbar .automode-toggle {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 12px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 20px;
+      cursor: pointer; font-size: 12px; color: var(--text-dim);
+    }
+    .topbar .automode-toggle.on {
+      background: rgba(0,214,143,0.15); border-color: var(--green); color: var(--green);
+    }
+    .topbar .automode-toggle.kill {
+      background: rgba(255,90,122,0.2); border-color: var(--red); color: var(--red);
+    }
+    .topbar .automode-toggle .switch {
+      width: 32px; height: 18px; background: var(--surface3); border-radius: 10px;
+      position: relative; transition: background 0.2s;
+    }
+    .topbar .automode-toggle .switch::after {
+      content: ""; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; background: var(--text-dim);
+      border-radius: 50%; transition: all 0.2s;
+    }
+    .topbar .automode-toggle.on .switch { background: var(--green); }
+    .topbar .automode-toggle.on .switch::after { left: 16px; background: white; }
+
+    .topbar .kill-btn {
+      padding: 6px 12px; background: rgba(255,90,122,0.15);
+      border: 1px solid var(--red); color: var(--red);
+      border-radius: 6px; cursor: pointer; font-size: 11px;
+    }
+    .topbar .kill-btn:hover { background: rgba(255,90,122,0.25); }
+
+    .panel { flex: 1; overflow-y: auto; display: none; }
+    .panel.active { display: flex; flex-direction: column; }
+
+    /* --- Chat panel --- */
+    #chatPanel { padding: 0; }
+    .chat-area {
+      flex: 1; overflow-y: auto; padding: 20px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .msg {
+      max-width: 80%; padding: 12px 16px; border-radius: 12px;
+      font-size: 13px; line-height: 1.6; word-wrap: break-word;
+    }
+    .msg.user {
+      align-self: flex-end; background: var(--accent); color: white;
+      border-bottom-right-radius: 4px; white-space: pre-wrap;
+    }
+    .msg.assistant {
+      align-self: flex-start; background: var(--surface2);
+      border: 1px solid var(--border); border-bottom-left-radius: 4px;
+    }
+    .msg.assistant code { background: var(--bg); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+    .msg.assistant pre { background: var(--bg); padding: 10px; border-radius: 6px; overflow-x: auto; margin: 8px 0; font-size: 12px; }
+    .msg.assistant pre code { background: none; padding: 0; }
+    .msg.assistant ul, .msg.assistant ol { margin: 6px 0; padding-left: 20px; }
+    .msg.assistant li { margin-bottom: 4px; }
+    .msg.error {
+      align-self: center; background: rgba(255,90,122,0.1);
+      border: 1px solid var(--red); color: var(--red); font-size: 12px;
+    }
+    .msg .confirm-box {
+      margin-top: 10px; padding: 12px; background: rgba(255,201,90,0.08);
+      border: 1px solid var(--yellow); border-radius: 6px;
+    }
+    .msg .confirm-box.danger {
+      background: rgba(255,90,122,0.1); border-color: var(--red);
+    }
+    .msg .confirm-box .pending-head {
+      font-size: 11px; color: var(--yellow); margin-bottom: 8px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .msg .confirm-box.danger .pending-head { color: var(--red); }
+    .msg .confirm-box .fields {
+      display: grid; grid-template-columns: 80px 1fr; gap: 6px 10px;
+      margin-bottom: 10px; font-size: 12px;
+    }
+    .msg .confirm-box .fields .k { color: var(--text-dim); }
+    .msg .confirm-box .fields .v {
+      font-family: monospace; font-size: 13px; color: var(--text);
+      word-break: break-all;
+    }
+    .msg .confirm-box .fields .v.big {
+      font-size: 16px; font-weight: 700; color: var(--yellow);
+    }
+    .msg .confirm-box.danger .fields .v.big { color: var(--red); }
+    .msg .confirm-box .pending-cmd {
+      display: block; background: var(--bg); padding: 6px 10px; border-radius: 4px;
+      font-size: 11px; color: var(--text-dim); margin-bottom: 8px; word-break: break-all;
+    }
+    .msg .confirm-box .verify-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+      font-size: 12px;
+    }
+    .msg .confirm-box .verify-row input {
+      padding: 6px 10px; background: var(--bg); border: 1px solid var(--red);
+      border-radius: 4px; color: var(--text); width: 80px; font-family: monospace;
+      text-transform: uppercase;
+    }
+    .msg .confirm-box button {
+      padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 11px;
+      margin-right: 6px; border: 1px solid var(--border);
+    }
+    .msg .confirm-box .confirm-run { background: var(--green); color: white; border: none; }
+    .msg .confirm-box .confirm-run:disabled { background: var(--surface3); color: var(--text-dim); cursor: not-allowed; }
+    .msg .confirm-box .confirm-cancel { background: var(--surface3); color: var(--text-dim); }
+    .msg .confirm-box .result { margin-top: 8px; white-space: pre-wrap; font-size: 11px; color: var(--text-dim); }
+
+    .typing {
+      align-self: flex-start; padding: 10px 14px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 12px; border-bottom-left-radius: 4px;
+      font-size: 13px; color: var(--text-dim); display: none;
+    }
+    .typing.show { display: block; }
+    .typing span { animation: blink 1.4s infinite; }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%,20%{opacity:0.2;} 50%{opacity:1;} 80%,100%{opacity:0.2;} }
+
+    .welcome { align-self: center; text-align: center; padding: 40px 20px; color: var(--text-dim); max-width: 560px; }
+    .welcome h2 { color: var(--accent); margin-bottom: 10px; font-size: 18px; }
+    .welcome p { font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
+    .welcome .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    .welcome .chip {
+      padding: 5px 10px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; font-size: 11px; cursor: pointer; color: var(--text);
+    }
+    .welcome .chip:hover { background: var(--accent-dim); }
+
+    .input-area {
+      padding: 14px 18px; border-top: 1px solid var(--border); background: var(--surface);
+      display: flex; gap: 10px; align-items: flex-end;
+    }
+    .input-area textarea {
+      flex: 1; padding: 10px 14px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 10px; font-size: 13px;
+      resize: none; min-height: 42px; max-height: 140px; outline: none; line-height: 1.4;
+    }
+    .input-area textarea:focus { border-color: var(--accent); }
+    .input-area button {
+      padding: 10px 20px; background: var(--accent); border: none; color: white;
+      border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600;
+    }
+    .input-area button:hover { background: var(--accent-dim); }
+    .input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .input-area .hint { font-size: 10px; color: var(--text-dim); padding: 8px 0; white-space: nowrap; }
+
+    /* --- Generic panel --- */
+    .panel-inner { padding: 20px; max-width: 920px; width: 100%; margin: 0 auto; }
+    .panel-inner h2 { font-size: 16px; color: var(--accent); margin-bottom: 12px; }
+    .panel-inner h3 { font-size: 13px; color: var(--accent-light); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .panel-inner .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; margin-bottom: 14px;
+    }
+    .panel-inner .muted { color: var(--text-dim); font-size: 12px; }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .stat { background: var(--surface2); border-radius: 8px; padding: 12px; }
+    .stat .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+    .stat .v { font-size: 18px; color: var(--text); margin-top: 4px; font-weight: 600; }
+    .stat .sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+    /* --- Auto mode panel --- */
+    .auto-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .auto-row:last-child { border-bottom: none; }
+    .auto-row .name { font-size: 13px; color: var(--text); }
+    .auto-row .desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .auto-row input[type=number] {
+      width: 60px; padding: 4px 8px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 4px; font-size: 12px;
+    }
+    .auto-row .tog {
+      width: 32px; height: 18px; background: var(--surface3);
+      border-radius: 10px; position: relative; cursor: pointer; flex-shrink: 0;
+    }
+    .auto-row .tog::after {
+      content: ""; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; background: var(--text-dim);
+      border-radius: 50%; transition: all 0.2s;
+    }
+    .auto-row .tog.on { background: var(--green); }
+    .auto-row .tog.on::after { left: 16px; background: white; }
+
+    .btn {
+      padding: 6px 14px; border-radius: 6px; cursor: pointer;
+      font-size: 11px; border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text);
+    }
+    .btn:hover { background: var(--accent-dim); border-color: var(--accent-dim); color: white; }
+    .btn.primary { background: var(--accent); color: white; border: none; }
+    .btn.primary:hover { background: var(--accent-dim); }
+    .btn.danger { background: rgba(255,90,122,0.15); color: var(--red); border-color: var(--red); }
+    .btn.danger:hover { background: var(--red); color: white; }
+    .btn.small { padding: 4px 10px; font-size: 10px; }
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+    .log-feed { max-height: 400px; overflow-y: auto; font-size: 11px; }
+    .log-entry {
+      padding: 6px 10px; background: var(--surface2); border-radius: 4px;
+      margin-bottom: 4px; display: flex; gap: 10px;
+    }
+    .log-entry .ts { color: var(--text-dim); min-width: 150px; flex-shrink: 0; }
+    .log-entry .action { color: var(--accent-light); min-width: 130px; flex-shrink: 0; }
+    .log-entry .result { flex: 1; color: var(--text-dim); word-break: break-all; }
+    .log-entry.ok .action { color: var(--green); }
+    .log-entry.err .action { color: var(--red); }
+
+    /* --- Raw CLI panel --- */
+    .raw-area {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all;
+      max-height: 500px; overflow-y: auto; color: var(--text);
+    }
+    .raw-area.err { border-color: var(--red); color: var(--red); }
+    .raw-input {
+      width: 100%; padding: 10px 14px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 8px; font-size: 13px;
+      outline: none;
+    }
+    .raw-input:focus { border-color: var(--accent); }
+
+    /* --- Memory panel --- */
+    .mem-section { margin-bottom: 20px; }
+    .mem-section h4 { font-size: 11px; color: var(--orange); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+    .mem-entry {
+      padding: 8px 10px; background: var(--surface2); border-radius: 6px;
+      font-size: 11px; margin-bottom: 4px; display: flex;
+      justify-content: space-between; align-items: center; word-break: break-all;
+    }
+    .mem-entry .del-mem { background: none; border: none; color: var(--red); cursor: pointer; opacity: 0.5; margin-left: 8px; }
+    .mem-entry .del-mem:hover { opacity: 1; }
+
+    /* --- Settings panel --- */
+    .settings-form label { display: block; font-size: 11px; color: var(--text-dim); margin-top: 14px; margin-bottom: 4px; }
+    .settings-form input, .settings-form select {
+      width: 100%; padding: 10px 12px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none;
+    }
+    .settings-form input:focus, .settings-form select:focus { border-color: var(--accent); }
+
+    .queue-list { max-height: 300px; overflow-y: auto; }
+    .queue-item {
+      padding: 8px 12px; background: var(--surface2); border-radius: 6px;
+      margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;
+    }
+    .queue-item .meta { font-size: 10px; color: var(--text-dim); }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sb-header">
+      <div class="logo">B</div>
+      <h1>Bankr Helper</h1>
+      <div class="dot" id="statusDot" title="Server status"></div>
+    </div>
+    <div class="nav">
+      <button data-panel="chatPanel" class="active" onclick="showPanel('chatPanel')">Chat</button>
+      <button data-panel="autoPanel" onclick="showPanel('autoPanel')">Auto Mode <span class="badge" id="autoBadge" style="display:none">ON</span></button>
+      <button data-panel="rawPanel" onclick="showPanel('rawPanel')">Raw CLI</button>
+      <button data-panel="skillsPanel" onclick="showPanel('skillsPanel')">Skills</button>
+      <button data-panel="memoryPanel" onclick="showPanel('memoryPanel')">Memory</button>
+      <button data-panel="settingsPanel" onclick="showPanel('settingsPanel')">Settings</button>
+      <button onclick="newThread()" style="color: var(--accent-light); margin-top: 6px;">+ New Chat</button>
+    </div>
+    <div class="threads">
+      <div class="section-label">Recent threads</div>
+      <div id="threadList"></div>
+    </div>
+    <div class="portfolio-widget" id="portfolioWidget">
+      <div class="muted">Loading wallet…</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="title" id="panelTitle">Chat</div>
+      <div class="spacer"></div>
+      <div class="automode-toggle" id="automodeToggle" onclick="toggleAutomode()">
+        <span>Auto Mode</span>
+        <div class="switch"></div>
+        <span id="automodeStatus">off</span>
+      </div>
+      <button class="kill-btn" id="killBtn" onclick="killSwitch()" style="display:none">KILL</button>
+    </div>
+
+    <!-- Chat Panel -->
+    <div class="panel active" id="chatPanel">
+      <div class="chat-area" id="chatArea">
+        <div class="welcome" id="welcome">
+          <h2>Bankr Helper</h2>
+          <p>Your AI assistant for the Bankr CLI. Data is fetched live — never fabricated. All write operations require your one-click confirmation.</p>
+          <div class="chips">
+            <div class="chip" onclick="quickSend('Show my portfolio')">Portfolio</div>
+            <div class="chip" onclick="quickSend('Who am I?')">Whoami</div>
+            <div class="chip" onclick="quickSend('Fees and earnings')">Fees</div>
+            <div class="chip" onclick="quickSend('Show my PnL for the last 7 days')">PnL 7d</div>
+            <div class="chip" onclick="quickSend('What LLM credits do I have?')">LLM credits</div>
+            <div class="chip" onclick="quickSend('Claim all claimable fees')">Claim fees</div>
+            <div class="chip" onclick="quickSend('Launch a token with a creative name')">Creative launch</div>
+            <div class="chip" onclick="quickSend('Search for BNKR')">BNKR token</div>
+          </div>
+        </div>
+        <div class="typing" id="typing">Thinking<span>.</span><span>.</span><span>.</span></div>
+      </div>
+      <div class="input-area">
+        <textarea id="input" placeholder="Ask about your wallet or give a task… (Shift+Enter for newline)" rows="1" onkeydown="handleKey(event)"></textarea>
+        <button id="sendBtn" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <!-- Auto Mode Panel -->
+    <div class="panel" id="autoPanel">
+      <div class="panel-inner">
+        <h2>Auto Mode</h2>
+        <p class="muted">The assistant manages your wallet on a schedule: claims fees, launches tokens, snapshots your portfolio. Every action is logged. Kill switch stops everything instantly.</p>
+
+        <div class="card">
+          <div class="grid3" id="autoStats">
+            <div class="stat"><div class="label">Total claimed</div><div class="v" id="statClaimed">—</div></div>
+            <div class="stat"><div class="label">Total launches</div><div class="v" id="statLaunches">—</div></div>
+            <div class="stat"><div class="label">Today's launches</div><div class="v" id="statToday">—</div><div class="sub" id="statTodayCap"></div></div>
+          </div>
+        </div>
+
+        <h3>Scheduled actions</h3>
+        <div class="card" id="autoActions"></div>
+
+        <h3>Limits</h3>
+        <div class="card" id="autoLimits"></div>
+
+        <h3>Token launch queue <span class="muted" id="queueSize"></span></h3>
+        <div class="card">
+          <div class="queue-list" id="queueList"></div>
+          <div class="btn-row">
+            <input id="qName" class="raw-input" placeholder="Name (e.g. Hypernova)" style="flex: 2; min-width: 180px;">
+            <input id="qSymbol" class="raw-input" placeholder="Symbol" style="flex: 1; min-width: 90px; max-width: 120px;">
+            <button class="btn primary" onclick="addToQueue()">Add to queue</button>
+          </div>
+        </div>
+
+        <h3>Activity log</h3>
+        <div class="card">
+          <div class="log-feed" id="logFeed"></div>
+          <div class="btn-row">
+            <button class="btn" onclick="refreshAutomode()">Refresh</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Raw CLI Panel -->
+    <div class="panel" id="rawPanel">
+      <div class="panel-inner">
+        <h2>Raw CLI</h2>
+        <p class="muted">Send any bankr CLI command directly — no LLM, no billing, instant execution. Writes stage for confirmation.</p>
+        <div class="card">
+          <input id="rawInput" class="raw-input" placeholder="wallet portfolio --all   /   tokens search BNKR   /   fees --days 7 --json" onkeydown="if(event.key==='Enter') runRaw()">
+          <div class="btn-row">
+            <button class="btn primary" onclick="runRaw()">Run</button>
+            <button class="btn small" onclick="setRaw('whoami')">whoami</button>
+            <button class="btn small" onclick="setRaw('wallet portfolio --all')">portfolio</button>
+            <button class="btn small" onclick="setRaw('fees --json')">fees --json</button>
+            <button class="btn small" onclick="setRaw('llm credits')">llm credits</button>
+            <button class="btn small" onclick="setRaw('llm models')">llm models</button>
+            <button class="btn small" onclick="setRaw('agent skills')">agent skills</button>
+            <button class="btn small" onclick="setRaw('config get')">config get</button>
+            <button class="btn small" onclick="setRaw('x402 list')">x402 list</button>
+            <button class="btn small" onclick="setRaw('update --check')">update --check</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="raw-area" id="rawOutput">Run a command to see output here.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skills Panel -->
+    <div class="panel" id="skillsPanel">
+      <div class="panel-inner">
+        <h2>Bankr Skills</h2>
+        <p class="muted">Tools from <a href="https://github.com/BankrBot/skills" target="_blank" style="color:var(--accent-light)">BankrBot/skills</a>. Click a skill to see its SKILL.md — that's the context your assistant uses to pick the right commands.</p>
+        <div class="card">
+          <div id="skillList" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;"></div>
+        </div>
+        <div class="card" id="skillDetail" style="display:none">
+          <h3 id="skillName"></h3>
+          <pre class="raw-area" id="skillBody" style="max-height: 600px;"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory Panel -->
+    <div class="panel" id="memoryPanel">
+      <div class="panel-inner">
+        <h2>Long-Term Memory</h2>
+        <p class="muted">Persisted across conversations. The assistant writes to this automatically when it learns something new.</p>
+        <div class="card" id="memoryContent"></div>
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="panel" id="settingsPanel">
+      <div class="panel-inner">
+        <h2>Settings</h2>
+        <div class="card settings-form">
+          <label>Groq API Key</label>
+          <input type="password" id="setGroqKey" placeholder="gsk_...">
+          <label>Groq Model</label>
+          <select id="setGroqModel">
+            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (recommended)</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant</option>
+            <option value="llama3-70b-8192">Llama 3 70B</option>
+            <option value="gemma2-9b-it">Gemma 2 9B</option>
+            <option value="deepseek-r1-distill-llama-70b">DeepSeek R1 70B</option>
+            <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+          </select>
+          <label>Bankr API Key</label>
+          <input type="password" id="setBankrKey" placeholder="bk_usr_...">
+          <div class="btn-row">
+            <button class="btn primary" onclick="saveSettings()">Save</button>
+            <span id="saveFb" class="muted" style="align-self: center;"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =================== STATE ===================
+    let currentThread = null;
+    let sending = false;
+    let autoState = null;
+
+    // =================== INIT ===================
+    async function init() {
+      await refreshStatus();
+      await loadThreadList();
+      await refreshAutomode();
+      await refreshOverview();
+      setInterval(refreshAutomode, 15_000);
+      setInterval(refreshOverview, 30_000);
+    }
+
+    async function refreshStatus() {
+      try {
+        const r = await fetch("/api/settings");
+        const s = await r.json();
+        const dot = document.getElementById("statusDot");
+        if (s.groqApiKeySet && s.bankrApiKeySet) dot.classList.add("on");
+        else dot.classList.remove("on");
+      } catch (_) {}
+    }
+
+    // =================== PANEL SWITCH ===================
+    function showPanel(id) {
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      document.querySelectorAll(".nav button[data-panel]").forEach((b) => {
+        b.classList.toggle("active", b.dataset.panel === id);
+      });
+      const titles = { chatPanel: "Chat", autoPanel: "Auto Mode", rawPanel: "Raw CLI",
+                       skillsPanel: "Skills", memoryPanel: "Memory", settingsPanel: "Settings" };
+      document.getElementById("panelTitle").textContent = titles[id] || "";
+      if (id === "memoryPanel") renderMemory();
+      if (id === "skillsPanel") renderSkillList();
+      if (id === "settingsPanel") loadSettings();
+    }
+
+    // =================== THREADS ===================
+    async function loadThreadList() {
+      const r = await fetch("/api/threads");
+      const threads = await r.json();
+      const el = document.getElementById("threadList");
+      el.innerHTML = "";
+      threads.slice(0, 40).forEach((t) => {
+        const div = document.createElement("div");
+        div.className = "thread" + (currentThread === t.id ? " active" : "");
+        div.onclick = () => loadThread(t.id);
+        const span = document.createElement("span");
+        span.className = "preview";
+        span.textContent = t.preview || "(empty)";
+        div.appendChild(span);
+        const btn = document.createElement("button");
+        btn.className = "del";
+        btn.textContent = "x";
+        btn.onclick = (e) => { e.stopPropagation(); deleteThread(t.id); };
+        div.appendChild(btn);
+        el.appendChild(div);
+      });
+    }
+
+    async function loadThread(id) {
+      currentThread = id;
+      const r = await fetch("/api/threads/" + encodeURIComponent(id));
+      const msgs = await r.json();
+      renderMessages(msgs);
+      await loadThreadList();
+      showPanel("chatPanel");
+    }
+
+    async function deleteThread(id) {
+      await fetch("/api/threads/" + encodeURIComponent(id), { method: "DELETE" });
+      if (currentThread === id) { currentThread = null; renderMessages([]); }
+      await loadThreadList();
+    }
+
+    function newThread() {
+      currentThread = null;
+      renderMessages([]);
+      document.getElementById("input").focus();
+      loadThreadList();
+      showPanel("chatPanel");
+    }
+
+    // =================== MESSAGES ===================
+    function renderMessages(msgs) {
+      const area = document.getElementById("chatArea");
+      const welcome = document.getElementById("welcome");
+      const typing = document.getElementById("typing");
+      while (area.firstChild) area.removeChild(area.firstChild);
+
+      if (msgs.length === 0) {
+        welcome.style.display = "";
+        area.appendChild(welcome);
+      } else {
+        welcome.style.display = "none";
+        msgs.forEach((m) => {
+          const div = document.createElement("div");
+          div.className = "msg " + m.role;
+          div.innerHTML = formatMessage(m.content, m.role);
+          if (m.pendingConfirms && m.pendingConfirms.length) {
+            m.pendingConfirms.forEach((c) => div.appendChild(buildConfirm(c)));
+          }
+          area.appendChild(div);
+        });
+      }
+      area.appendChild(typing);
+      area.scrollTop = area.scrollHeight;
+    }
+
+    function formatMessage(text, role) {
+      if (role === "user") return escHtml(text);
+      let html = escHtml(text);
+      html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, l, c) => '<pre><code>' + c + '</code></pre>');
+      html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/(^|\n)([*-]) (.+)/g, (_, pre, b, c) => pre + '<li>' + c + '</li>');
+      html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+      html = html.replace(/\n/g, '<br>');
+      html = html.replace(/<br><(ul|pre|\/ul|\/pre)/g, '<$1');
+      html = html.replace(/<\/(ul|pre)><br>/g, '</$1>');
+      return html;
+    }
+
+    function escHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+    function buildConfirm(pending) {
+      const s = pending.summary || {};
+      const dangerous = !!s.danger;
+
+      const box = document.createElement("div");
+      box.className = "confirm-box" + (dangerous ? " danger" : "");
+      box.dataset.pendingId = pending.pendingId;
+
+      const head = document.createElement("div");
+      head.className = "pending-head";
+      head.textContent = dangerous
+        ? "⚠ WALLET WRITE — verify every field below"
+        : "Pending action — confirm to run";
+      box.appendChild(head);
+
+      // Structured fields — the parts that matter (destination, amount, token)
+      // pulled out of the raw command so the user's eye lands on them.
+      const fields = document.createElement("div");
+      fields.className = "fields";
+      const addRow = (k, v, big) => {
+        const kd = document.createElement("div"); kd.className = "k"; kd.textContent = k;
+        const vd = document.createElement("div"); vd.className = "v" + (big ? " big" : ""); vd.textContent = v;
+        fields.appendChild(kd); fields.appendChild(vd);
+      };
+      addRow("command", s.root || pending.command.split(" ").slice(0, 2).join(" "));
+      if (s.to)     addRow("to",     s.to, true);
+      if (s.amount) addRow("amount", s.amount + (s.native ? " (native)" : s.token ? " " + s.token : ""), true);
+      if (s.name)   addRow("name",   s.name);
+      if (s.symbol) addRow("symbol", s.symbol);
+      if (s.simulate) addRow("mode", "SIMULATE (no broadcast)");
+      box.appendChild(fields);
+
+      // Always still show the raw command so power users can audit flag set.
+      const cmd = document.createElement("code");
+      cmd.className = "pending-cmd";
+      cmd.textContent = "$ bankr " + pending.command;
+      box.appendChild(cmd);
+
+      // Dangerous writes require typing the last 4 chars of the destination
+      // (or symbol if no address). Defense against habituated-clicking.
+      let verifyInput = null;
+      let expectedVerify = null;
+      if (dangerous && s.to) expectedVerify = s.to.slice(-4).toUpperCase();
+      else if (s.simulate === false && s.symbol) expectedVerify = s.symbol.slice(-4).toUpperCase();
+      if (expectedVerify) {
+        const row = document.createElement("div");
+        row.className = "verify-row";
+        const label = document.createElement("span");
+        label.textContent = `Type last 4 of ${s.to ? "destination" : "symbol"} (${expectedVerify.length}):`;
+        label.style.color = "var(--text-dim)";
+        const inp = document.createElement("input");
+        inp.maxLength = 4;
+        inp.placeholder = "____";
+        row.appendChild(label);
+        row.appendChild(inp);
+        box.appendChild(row);
+        verifyInput = inp;
+        inp.oninput = () => { run.disabled = inp.value.toUpperCase() !== expectedVerify; };
+      }
+
+      const run = document.createElement("button");
+      run.className = "confirm-run";
+      run.textContent = dangerous ? "Confirm & broadcast" : "Confirm & run";
+      if (expectedVerify) run.disabled = true;
+      run.onclick = async () => {
+        if (expectedVerify && verifyInput.value.toUpperCase() !== expectedVerify) return;
+        run.disabled = true;
+        run.textContent = "Running…";
+        const r = await fetch("/api/bankr/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pendingId: pending.pendingId }),
+        });
+        const data = await r.json();
+        const res = document.createElement("div");
+        res.className = "result";
+        res.textContent = data.output || JSON.stringify(data);
+        box.appendChild(res);
+        run.style.display = "none";
+        cancel.style.display = "none";
+        if (verifyInput) verifyInput.disabled = true;
+      };
+      const cancel = document.createElement("button");
+      cancel.className = "confirm-cancel";
+      cancel.textContent = "Cancel";
+      cancel.onclick = () => { box.remove(); };
+      box.appendChild(run);
+      box.appendChild(cancel);
+      return box;
+    }
+
+    function addMessage(role, content, pendingConfirms) {
+      const area = document.getElementById("chatArea");
+      const typing = document.getElementById("typing");
+      document.getElementById("welcome").style.display = "none";
+      const div = document.createElement("div");
+      div.className = "msg " + role;
+      div.innerHTML = formatMessage(content, role);
+      if (pendingConfirms && pendingConfirms.length) {
+        pendingConfirms.forEach((c) => div.appendChild(buildConfirm(c)));
+      }
+      area.insertBefore(div, typing);
+      area.scrollTop = area.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("input");
+      const msg = input.value.trim();
+      if (!msg || sending) return;
+      sending = true;
+      input.value = "";
+      input.style.height = "auto";
+      document.getElementById("sendBtn").disabled = true;
+
+      addMessage("user", msg);
+      const typing = document.getElementById("typing");
+      typing.classList.add("show");
+      document.getElementById("chatArea").scrollTop = document.getElementById("chatArea").scrollHeight;
+
+      try {
+        const r = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg, threadId: currentThread }),
+        });
+        const data = await r.json();
+        if (data.error) addMessage("error", data.error);
+        else {
+          addMessage("assistant", data.response, data.pendingConfirms);
+          if (!currentThread) currentThread = data.threadId;
+          await loadThreadList();
+        }
+      } catch (e) {
+        addMessage("error", "Network error: " + e.message);
+      }
+      typing.classList.remove("show");
+      sending = false;
+      document.getElementById("sendBtn").disabled = false;
+      input.focus();
+    }
+
+    function quickSend(text) {
+      document.getElementById("input").value = text;
+      sendMessage();
+    }
+
+    function handleKey(e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      const t = e.target;
+      setTimeout(() => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 140) + "px"; }, 0);
+    }
+
+    // =================== AUTOMODE ===================
+    async function refreshAutomode() {
+      try {
+        const r = await fetch("/api/automode");
+        autoState = await r.json();
+        renderAutomode();
+      } catch (_) {}
+    }
+
+    function renderAutomode() {
+      if (!autoState) return;
+
+      // Top toggle
+      const tog = document.getElementById("automodeToggle");
+      const status = document.getElementById("automodeStatus");
+      const badge = document.getElementById("autoBadge");
+      const killBtn = document.getElementById("killBtn");
+      tog.classList.remove("on", "kill");
+      if (autoState.killSwitch) { tog.classList.add("kill"); status.textContent = "KILL"; badge.style.display = "inline-block"; badge.textContent = "KILL"; badge.style.background = "var(--red)"; killBtn.style.display = "none"; }
+      else if (autoState.enabled) { tog.classList.add("on"); status.textContent = "on"; badge.style.display = "inline-block"; badge.textContent = "ON"; badge.style.background = "var(--green)"; killBtn.style.display = "inline-block"; }
+      else { status.textContent = "off"; badge.style.display = "none"; killBtn.style.display = "none"; }
+
+      // Stats
+      document.getElementById("statClaimed").textContent = "$" + (autoState.state.totalClaimedUsd || 0).toFixed(2);
+      document.getElementById("statLaunches").textContent = autoState.state.totalLaunches || 0;
+      document.getElementById("statToday").textContent = autoState.state.launchesToday || 0;
+      document.getElementById("statTodayCap").textContent = "cap " + autoState.limits.maxLaunchesPerDay + "/day";
+
+      // Actions
+      const actionsEl = document.getElementById("autoActions");
+      actionsEl.innerHTML = "";
+      const descs = {
+        claimFees: "Scan for claimable creator fees and claim any over threshold",
+        launchToken: "Deploy the next token from the launch queue",
+        snapshotPortfolio: "Pull portfolio balances and record snapshot",
+        refreshWhoami: "Refresh account info / wallet bindings",
+      };
+      Object.entries(autoState.schedule).forEach(([action, cfg]) => {
+        const lastRun = autoState.state.lastRun[action];
+        const lastStr = lastRun ? new Date(lastRun).toLocaleTimeString() : "never";
+        const row = document.createElement("div");
+        row.className = "auto-row";
+        row.innerHTML = `
+          <div style="flex:1;">
+            <div class="name">${action}</div>
+            <div class="desc">${descs[action] || ""} · last ${lastStr}</div>
+          </div>
+          <input type="number" min="1" max="10080" value="${cfg.intervalMin}" onchange="setInterval_('${action}', this.value)"><span class="desc">min</span>
+          <button class="btn small" onclick="runNow('${action}')">Run now</button>
+          <div class="tog ${cfg.enabled ? 'on' : ''}" onclick="toggleAction('${action}')"></div>
+        `;
+        actionsEl.appendChild(row);
+      });
+
+      // Limits
+      const limitsEl = document.getElementById("autoLimits");
+      limitsEl.innerHTML = "";
+      const limits = [
+        ["maxLaunchesPerDay", "Max token launches per day"],
+        ["claimThresholdUsd", "Minimum $ USD before claim"],
+        ["maxUsdPerAction", "Max $ USD per single action"],
+      ];
+      limits.forEach(([k, label]) => {
+        const row = document.createElement("div");
+        row.className = "auto-row";
+        row.innerHTML = `
+          <div style="flex:1;"><div class="name">${label}</div><div class="desc">${k}</div></div>
+          <input type="number" min="0" step="0.01" value="${autoState.limits[k]}" onchange="setLimit('${k}', this.value)">
+        `;
+        limitsEl.appendChild(row);
+      });
+
+      // Queue
+      fetch("/api/automode/queue").then((r) => r.json()).then((q) => {
+        document.getElementById("queueSize").textContent = "(" + q.queue.length + ")";
+        const ql = document.getElementById("queueList");
+        ql.innerHTML = "";
+        q.queue.forEach((tok, i) => {
+          const row = document.createElement("div");
+          row.className = "queue-item";
+          row.innerHTML = `<div><strong>${tok.name}</strong> <span class="meta">${tok.symbol} · ${tok.theme || ""}</span></div>`;
+          const del = document.createElement("button");
+          del.className = "btn small danger";
+          del.textContent = "x";
+          del.onclick = () => removeFromQueue(i);
+          row.appendChild(del);
+          ql.appendChild(row);
+        });
+      });
+
+      // Log
+      fetch("/api/automode/log?n=50").then((r) => r.json()).then((log) => {
+        const feed = document.getElementById("logFeed");
+        feed.innerHTML = "";
+        if (log.length === 0) { feed.innerHTML = '<div class="muted">No activity yet.</div>'; return; }
+        log.forEach((e) => {
+          const div = document.createElement("div");
+          div.className = "log-entry " + (e.ok === false ? "err" : e.ok === true ? "ok" : "");
+          const ts = new Date(e.ts).toLocaleString();
+          const extra = e.error ? "err: " + e.error :
+                        e.skipped ? "skipped: " + e.skipped :
+                        e.claimable !== undefined ? "claimable: " + e.claimable :
+                        e.summary ? JSON.stringify(e.summary).slice(0, 200) :
+                        (e.output || "").slice(0, 200);
+          div.innerHTML = `<span class="ts">${ts}</span><span class="action">${e.action}</span><span class="result">${escHtml(String(extra))}</span>`;
+          feed.appendChild(div);
+        });
+      });
+    }
+
+    async function toggleAutomode() {
+      if (!autoState) return;
+      if (autoState.killSwitch) {
+        await fetch("/api/automode/reset-kill", { method: "POST" });
+      } else {
+        await fetch("/api/automode/toggle", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: !autoState.enabled }),
+        });
+      }
+      await refreshAutomode();
+    }
+
+    async function killSwitch() {
+      if (!confirm("Activate kill switch? This halts all auto actions immediately.")) return;
+      await fetch("/api/automode/kill", { method: "POST" });
+      await refreshAutomode();
+    }
+
+    async function runNow(action) {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = "Running…";
+      try {
+        const r = await fetch("/api/automode/run-now/" + action, { method: "POST" });
+        await r.json();
+      } catch (_) {}
+      btn.disabled = false;
+      btn.textContent = "Run now";
+      await refreshAutomode();
+    }
+
+    async function toggleAction(action) {
+      const cfg = autoState.schedule[action];
+      const patch = { schedule: { [action]: { ...cfg, enabled: !cfg.enabled } } };
+      await fetch("/api/automode/config", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      await refreshAutomode();
+    }
+
+    async function setInterval_(action, val) {
+      const v = parseInt(val, 10);
+      if (!v || v < 1) return;
+      const cfg = autoState.schedule[action];
+      const patch = { schedule: { [action]: { ...cfg, intervalMin: v } } };
+      await fetch("/api/automode/config", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      await refreshAutomode();
+    }
+
+    async function setLimit(key, val) {
+      const v = parseFloat(val);
+      if (isNaN(v)) return;
+      const patch = { limits: { [key]: v } };
+      await fetch("/api/automode/config", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      await refreshAutomode();
+    }
+
+    async function addToQueue() {
+      const name = document.getElementById("qName").value.trim();
+      const symbol = document.getElementById("qSymbol").value.trim().toUpperCase();
+      if (!name || !symbol) return alert("Name and symbol required.");
+      const r = await fetch("/api/automode/queue");
+      const q = await r.json();
+      q.queue.push({ name, symbol, theme: "user-added" });
+      await fetch("/api/automode/queue", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(q),
+      });
+      document.getElementById("qName").value = "";
+      document.getElementById("qSymbol").value = "";
+      await refreshAutomode();
+    }
+
+    async function removeFromQueue(idx) {
+      const r = await fetch("/api/automode/queue");
+      const q = await r.json();
+      q.queue.splice(idx, 1);
+      await fetch("/api/automode/queue", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(q),
+      });
+      await refreshAutomode();
+    }
+
+    // =================== RAW CLI ===================
+    function setRaw(cmd) {
+      document.getElementById("rawInput").value = cmd;
+      document.getElementById("rawInput").focus();
+    }
+
+    async function runRaw() {
+      const cmd = document.getElementById("rawInput").value.trim();
+      if (!cmd) return;
+      const out = document.getElementById("rawOutput");
+      out.textContent = "Running…";
+      out.classList.remove("err");
+      try {
+        const r = await fetch("/api/bankr", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: cmd }),
+        });
+        const data = await r.json();
+        if (data.confirmRequired) {
+          out.innerHTML = "";
+          const p = document.createElement("div");
+          p.style.color = "var(--yellow)";
+          p.textContent = "Write command — confirm to run:";
+          out.appendChild(p);
+          const c = document.createElement("code");
+          c.style.display = "block"; c.style.margin = "8px 0";
+          c.textContent = "$ bankr " + data.command;
+          out.appendChild(c);
+          const btn = document.createElement("button");
+          btn.className = "btn primary";
+          btn.textContent = "Confirm & run";
+          btn.onclick = async () => {
+            btn.disabled = true;
+            btn.textContent = "Running…";
+            const r2 = await fetch("/api/bankr/confirm", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ pendingId: data.pendingId }),
+            });
+            const d2 = await r2.json();
+            out.textContent = d2.output || JSON.stringify(d2);
+            if (!d2.ok) out.classList.add("err");
+          };
+          out.appendChild(btn);
+        } else {
+          out.textContent = data.output || JSON.stringify(data);
+          if (!data.ok) out.classList.add("err");
+        }
+      } catch (e) {
+        out.textContent = "Error: " + e.message;
+        out.classList.add("err");
+      }
+    }
+
+    // =================== SKILLS ===================
+    const BANKR_SKILLS = [
+      "bankr", "bankr-token-scam-analysis", "bankr-twitter-agent",
+      "siwa", "signals", "botchan", "endaoment", "ens-primary-name",
+      "erc-8004", "onchainkit", "qrcoin", "veil", "yoink", "neynar",
+      "quicknode", "hydrex", "helixa", "trails", "alchemy", "0xwork",
+      "BOTCOIN", "litcoin", "productclank", "symbiosis", "zerion",
+      "zyfai", "quotient", "gitlawb", "moltycash", "stakr",
+    ];
+
+    function renderSkillList() {
+      const el = document.getElementById("skillList");
+      if (el.childElementCount > 0) return; // render once
+      BANKR_SKILLS.forEach((s) => {
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.style.justifyContent = "flex-start";
+        b.style.padding = "10px 12px";
+        b.textContent = s;
+        b.onclick = () => viewSkill(s);
+        el.appendChild(b);
+      });
+    }
+
+    async function viewSkill(name) {
+      const detail = document.getElementById("skillDetail");
+      const body = document.getElementById("skillBody");
+      const heading = document.getElementById("skillName");
+      heading.textContent = name;
+      body.textContent = "Loading…";
+      detail.style.display = "block";
+      try {
+        const r = await fetch(`https://raw.githubusercontent.com/BankrBot/skills/main/${name}/SKILL.md`);
+        body.textContent = r.ok ? await r.text() : "Not found (" + r.status + ")";
+      } catch (e) {
+        body.textContent = "Failed to load: " + e.message;
+      }
+    }
+
+    // =================== MEMORY ===================
+    async function renderMemory() {
+      const r = await fetch("/api/memory");
+      const mem = await r.json();
+      const el = document.getElementById("memoryContent");
+      el.innerHTML = "";
+      Object.entries(mem).forEach(([cat, data]) => {
+        const s = document.createElement("div"); s.className = "mem-section";
+        const h = document.createElement("h4"); h.textContent = cat; s.appendChild(h);
+        if (Array.isArray(data)) {
+          if (!data.length) s.innerHTML += '<div class="mem-entry"><span class="muted">(empty)</span></div>';
+          else data.forEach((item, i) => {
+            const row = document.createElement("div"); row.className = "mem-entry";
+            const sp = document.createElement("span"); sp.textContent = typeof item === "string" ? item : JSON.stringify(item); row.appendChild(sp);
+            const bt = document.createElement("button"); bt.className = "del-mem"; bt.textContent = "x";
+            bt.onclick = () => deleteMemory(cat, i); row.appendChild(bt); s.appendChild(row);
+          });
+        } else if (typeof data === "object" && data) {
+          const keys = Object.keys(data);
+          if (!keys.length) s.innerHTML += '<div class="mem-entry"><span class="muted">(empty)</span></div>';
+          else keys.forEach((k) => {
+            const v = data[k];
+            const row = document.createElement("div"); row.className = "mem-entry";
+            const sp = document.createElement("span");
+            sp.innerHTML = "<strong>" + escHtml(k) + ":</strong> " + escHtml(typeof v === "string" ? v : JSON.stringify(v));
+            row.appendChild(sp);
+            const bt = document.createElement("button"); bt.className = "del-mem"; bt.textContent = "x";
+            bt.onclick = () => deleteMemoryKey(cat, k); row.appendChild(bt); s.appendChild(row);
+          });
+        }
+        el.appendChild(s);
+      });
+    }
+
+    async function deleteMemory(cat, idx) {
+      const r = await fetch("/api/memory"); const mem = await r.json();
+      if (Array.isArray(mem[cat])) mem[cat].splice(idx, 1);
+      await fetch("/api/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mem) });
+      renderMemory();
+    }
+    async function deleteMemoryKey(cat, key) {
+      const r = await fetch("/api/memory"); const mem = await r.json();
+      if (mem[cat] && typeof mem[cat] === "object") delete mem[cat][key];
+      await fetch("/api/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mem) });
+      renderMemory();
+    }
+
+    // =================== SETTINGS ===================
+    async function loadSettings() {
+      const r = await fetch("/api/settings");
+      const s = await r.json();
+      document.getElementById("setGroqKey").value = s.groqApiKey || "";
+      document.getElementById("setGroqModel").value = s.groqModel || "llama-3.3-70b-versatile";
+      document.getElementById("setBankrKey").value = s.bankrApiKey || "";
+    }
+
+    async function saveSettings() {
+      const body = {
+        groqApiKey: document.getElementById("setGroqKey").value,
+        groqModel: document.getElementById("setGroqModel").value,
+        bankrApiKey: document.getElementById("setBankrKey").value,
+      };
+      await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const fb = document.getElementById("saveFb");
+      fb.textContent = "Saved · " + new Date().toLocaleTimeString();
+      fb.style.color = "var(--green)";
+      await refreshStatus();
+    }
+
+    // =================== PORTFOLIO WIDGET ===================
+    async function refreshOverview() {
+      try {
+        const r = await fetch("/api/overview");
+        const data = await r.json();
+        const w = document.getElementById("portfolioWidget");
+        if (!data.ok) { w.innerHTML = '<div class="muted">Configure Bankr API key in Settings</div>'; return; }
+
+        // Extract wallet + total from whoami/portfolio text
+        const who = data.whoami || "";
+        const port = data.portfolio || "";
+        const evmMatch = who.match(/EVM\s+([0-9a-fA-Fx]{8,})/);
+        const clubMatch = who.match(/Bankr Club:\s*(\S+)/);
+        const scoreMatch = who.match(/Score:\s*(\d+)/);
+        // Try to find a dollar total
+        const totalMatch = port.match(/Total\s*:?\s*\$?([\d,\.]+)/i) || port.match(/\$([\d,\.]+)\s+Total/i);
+
+        w.innerHTML = `
+          <div class="row"><span>Wallet</span><span class="v" style="font-size:10px;">${evmMatch ? (evmMatch[1].slice(0,8) + "…" + evmMatch[1].slice(-4)) : "—"}</span></div>
+          <div class="row"><span>Portfolio</span><span class="v good">${totalMatch ? "$" + totalMatch[1] : "—"}</span></div>
+          <div class="row"><span>Bankr Club</span><span class="v ${clubMatch && clubMatch[1] === 'Active' ? 'good' : 'warn'}">${clubMatch ? clubMatch[1] : "—"}</span></div>
+          <div class="row"><span>Score</span><span class="v">${scoreMatch ? scoreMatch[1] : "—"}</span></div>
+          <button class="refresh" onclick="refreshOverview()">refresh</button>
+        `;
+      } catch (_) {}
+    }
+
+    init();
+  </script>
+</body>
+</html>

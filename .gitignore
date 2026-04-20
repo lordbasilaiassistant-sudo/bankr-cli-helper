@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# local user data — contains API keys, memory, chat history, automode state
+data/
+
+# env & logs
+.env
+.env.*
+!.env.example
+server.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editors & tooling
+.vscode/
+.idea/
+*.swp
+.claude/

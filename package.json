@@ -1,0 +1,31 @@
+{
+  "name": "bankr-cli-helper",
+  "version": "0.1.0",
+  "description": "Local web app that wraps the Bankr CLI with a free Groq LLM frontend. Chat, raw CLI, and an auto-mode scheduler that claims fees, launches tokens, and snapshots your portfolio.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "bankr",
+    "crypto",
+    "defi",
+    "base",
+    "cli",
+    "groq",
+    "llm",
+    "agent",
+    "wallet"
+  ],
+  "author": "drlor",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@bankr/cli": "^0.2.15",
+    "express": "^5.2.1"
+  }
+}
