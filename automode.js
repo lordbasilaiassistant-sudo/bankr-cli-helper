@@ -236,12 +236,17 @@ async function actionLaunchToken(ctx) {
     return { ok: false, skipped: true, reason: "invalid_token" };
   }
 
-  // Array form — no string concatenation, no shell.
+  // Array form — no string concatenation, no shell. All optional flags are
+  // explicitly set (with "" placeholders) so the CLI's interactive prompt
+  // layer — which ignores piped stdin in TUI mode — never activates.
   const args = [
     "launch",
     "--name", token.name,
     "--symbol", token.symbol,
     "--image", `https://placehold.co/512x512/1a1a26/6c5ce7/png?text=${encodeURIComponent(token.symbol)}`,
+    "--tweet", "",
+    "--website", "",
+    "--fee", "",
     "--fee-type", "wallet",
     "-y",
   ];

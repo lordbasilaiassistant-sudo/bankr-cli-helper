@@ -398,13 +398,14 @@ Every command below is free to execute via the local CLI.
 | \`fees claim <tokenAddress> -y\` | Claim fees for one token |
 | \`fees claim-wallet [--all] -y\` | Claim across all launched tokens |
 
-## Launch (free-free; all deploys go through Clanker)
+## Launch (gas-only; deploys go through Clanker)
 | Command | Use |
 |---|---|
-| \`launch --name "X" --symbol "SYM" --image "URL" --tweet "URL" --website "URL" --fee "@handle" --fee-type x -y\` | Full-metadata launch |
-| \`launch --name "X" --symbol "SYM" --image "URL" -y --simulate\` | Dry-run (no broadcast) |
+| \`launch --name "X" --symbol "SYM" --image "URL" --tweet "" --website "" --fee "" --fee-type wallet -y\` | Minimal launch (fees → your wallet) |
+| \`launch --name "X" --symbol "SYM" --image "URL" --tweet "<url>" --website "<url>" --fee "@handle" --fee-type x -y\` | Full metadata with an X/farcaster fee recipient |
+| \`launch --name "X" --symbol "SYM" --image "URL" --tweet "" --website "" --fee "" --fee-type wallet -y --simulate\` | Dry-run (no broadcast) |
 
-Fee-type options: x, farcaster, ens, wallet.
+**IMPORTANT:** Always pass \`--tweet\`, \`--website\`, and \`--fee\` flags even if empty (\`""\`) to skip the CLI's interactive prompts, which ignore our piped stdin. Fee-type options: x, farcaster, ens, wallet. Use \`wallet\` with empty \`--fee\` to collect fees to the logged-in wallet.
 
 ## LLM Gateway
 | Command | Use |
