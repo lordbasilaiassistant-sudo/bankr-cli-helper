@@ -713,12 +713,18 @@
         const vd = document.createElement("div"); vd.className = "v" + (big ? " big" : ""); vd.textContent = v;
         fields.appendChild(kd); fields.appendChild(vd);
       };
-      addRow("command", s.root || pending.command.split(" ").slice(0, 2).join(" "));
-      if (s.to)     addRow("to",     s.to, true);
-      if (s.amount) addRow("amount", s.amount + (s.native ? " (native)" : s.token ? " " + s.token : ""), true);
-      if (s.name)   addRow("name",   s.name);
-      if (s.symbol) addRow("symbol", s.symbol);
-      if (s.simulate) addRow("mode", "SIMULATE (no broadcast)");
+      if (s.recipe) {
+        addRow("recipe", s.recipe.name);
+        addRow("amount", s.recipe.amount + " " + (s.recipe.name === "weth-unwrap" ? "WETH → ETH" : "ETH → WETH"), true);
+        addRow("chain",  s.recipe.chain);
+      } else {
+        addRow("command", s.root || pending.command.split(" ").slice(0, 2).join(" "));
+        if (s.to)     addRow("to",     s.to, true);
+        if (s.amount) addRow("amount", s.amount + (s.native ? " (native)" : s.token ? " " + s.token : ""), true);
+        if (s.name)   addRow("name",   s.name);
+        if (s.symbol) addRow("symbol", s.symbol);
+        if (s.simulate) addRow("mode", "SIMULATE (no broadcast)");
+      }
       box.appendChild(fields);
 
       // Always still show the raw command so power users can audit flag set.

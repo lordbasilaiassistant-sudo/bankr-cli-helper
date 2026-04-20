@@ -216,8 +216,72 @@ function runBankr(input, settings) {
 const VALID_COMMANDS = new Set([
   "wallet", "tokens", "fees", "whoami", "llm", "skills",
   "config", "launch", "sounds", "agent", "x402", "update",
+  // synthetic recipes — server expands before spawning bankr
+  "weth-unwrap", "weth-wrap",
   // intentionally omitted: "login", "logout" — require special handling
 ]);
+
+// Reject commands the LLM clearly fabricated — placeholder text that
+// was never filled in. If we see it we refuse; the LLM must come back
+// with a concrete command after asking the user for the missing fields.
+const PLACEHOLDER_PATTERNS = [
+  /\b0x\.\.\./,         // 0x... address placeholder
+  /<[a-zA-Z_][^>]*>/,   // <amount>, <address>, etc.
+  /\s\.\.\.\s/,         // ... inside command (amount/symbol placeholder)
+  /\s\.\.\.$/,          // trailing ellipsis
+  /\byour[-_]wallet\b/i, // common LLM placeholder
+  /0xEVIL|0xDEAD(?!BEEF)/, // exemplar addresses that shouldn't leak
+];
+function looksLikePlaceholder(cmdStr) {
+  return PLACEHOLDER_PATTERNS.some((re) => re.test(cmdStr));
+}
+
+// --- WETH wrap / unwrap recipes ---
+// WETH has the same address on Base and Optimism (canonical L2 predeploy).
+// On Ethereum mainnet it's a different contract.
+const WETH_ADDRESSES = {
+  base: { address: "0x4200000000000000000000000000000000000006", chainId: 8453 },
+  mainnet: { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", chainId: 1 },
+};
+const WETH_WITHDRAW_SELECTOR = "0x2e1a7d4d";
+const WETH_DEPOSIT_SELECTOR = "0xd0e30db0";
+
+function parseEtherWei(amountStr) {
+  if (!/^\d+(?:\.\d+)?$/.test(amountStr)) throw new Error(`bad amount: ${amountStr}`);
+  const [whole, frac = ""] = amountStr.split(".");
+  const fracPadded = (frac + "0".repeat(18)).slice(0, 18);
+  return BigInt(whole) * 10n ** 18n + BigInt(fracPadded);
+}
+
+function expandRecipe(tokens) {
+  const [root, amount, chain = "base"] = tokens;
+  const info = WETH_ADDRESSES[chain.toLowerCase()];
+  if (!info) throw new Error(`unsupported chain for ${root}: ${chain}`);
+  const wei = parseEtherWei(amount);
+  const weiHex = wei.toString(16).padStart(64, "0");
+
+  if (root === "weth-unwrap") {
+    return [
+      "wallet", "submit", "tx",
+      "--to", info.address,
+      "--chain-id", String(info.chainId),
+      "--value", "0",
+      "--data", WETH_WITHDRAW_SELECTOR + weiHex,
+      "--description", `unwrap ${amount} WETH → ETH on ${chain}`,
+    ];
+  }
+  if (root === "weth-wrap") {
+    return [
+      "wallet", "submit", "tx",
+      "--to", info.address,
+      "--chain-id", String(info.chainId),
+      "--value", wei.toString(),
+      "--data", WETH_DEPOSIT_SELECTOR,
+      "--description", `wrap ${amount} ETH → WETH on ${chain}`,
+    ];
+  }
+  throw new Error(`unknown recipe: ${root}`);
+}
 
 function isValidBankrCommand(cmdStr) {
   const parts = cmdStr.trim().split(/\s+/);
@@ -226,10 +290,27 @@ function isValidBankrCommand(cmdStr) {
   // Never allow calls to the paid AI agent (agent prompt / default agent text)
   if (parts[0] === "agent") {
     const sub = parts[1];
-    // Allow only the non-paid subcommands
     return sub === "skills" || sub === "status" || sub === "cancel" || sub === "profile";
   }
+  // Recipes must have a concrete amount
+  if (parts[0] === "weth-unwrap" || parts[0] === "weth-wrap") {
+    if (!parts[1] || !/^\d+(?:\.\d+)?$/.test(parts[1])) return false;
+  }
+  // Reject commands that still contain placeholder text — the LLM guessed,
+  // it needs to come back with real values.
+  if (looksLikePlaceholder(cmdStr)) return false;
   return true;
+}
+
+// Resolve a command string into the final argv array that will be fed to
+// the bankr CLI. For synthetic recipes (weth-unwrap etc.) this expands to
+// the underlying wallet submit tx invocation. Throws if recipe args are bad.
+function resolveCommand(cmdStr) {
+  const tokens = parseBankrArgs(cmdStr);
+  if (tokens[0] === "weth-unwrap" || tokens[0] === "weth-wrap") {
+    return expandRecipe(tokens);
+  }
+  return tokens;
 }
 
 // Write commands — must be confirmed by the user before execution
@@ -245,6 +326,7 @@ const WRITE_PATTERNS = [
   /^config\s+set\b/,
   /^x402\s+(deploy|delete|pause|resume|env\s+set|call)\b/,
   /^sounds\s+(install|use|volume|mute|unmute|enable|disable)\b/,
+  /^weth-(unwrap|wrap)\b/, // recipes expand to wallet submit tx — also writes
 ];
 
 function isWriteCommand(cmdStr) {
@@ -270,7 +352,15 @@ function takePending(id) {
 // can surface them prominently (highlight the destination address / amount
 // instead of burying them in a monospace line the user scans past).
 function summarizeWrite(cmdStr) {
-  const args = parseBankrArgs(cmdStr);
+  // If this is a recipe, show the human-friendly form in the UI but also
+  // include the expanded low-level command so power users can audit it.
+  const surfaceTokens = parseBankrArgs(cmdStr);
+  let args = surfaceTokens;
+  let recipe = null;
+  if (surfaceTokens[0] === "weth-unwrap" || surfaceTokens[0] === "weth-wrap") {
+    recipe = { name: surfaceTokens[0], amount: surfaceTokens[1], chain: surfaceTokens[2] || "base" };
+    try { args = expandRecipe(surfaceTokens); } catch (_) { args = surfaceTokens; }
+  }
   // Root = first positional command(s) up to the first flag
   const rootParts = [];
   for (const a of args) {
@@ -278,6 +368,7 @@ function summarizeWrite(cmdStr) {
     rootParts.push(a);
   }
   const summary = { command: cmdStr, root: rootParts.join(" ") || args[0] };
+  if (recipe) summary.recipe = recipe;
   const flagValue = (flag) => {
     const i = args.indexOf(flag);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : null;
@@ -298,6 +389,18 @@ function summarizeWrite(cmdStr) {
   if (simulate) summary.simulate = true;
   summary.danger = args[0] === "wallet" && (args[1] === "transfer" || args[1] === "submit" || args[1] === "sign");
   return summary;
+}
+
+// Runs the CLI *after* recipe expansion. The LLM emits the short form; the
+// server handles the unsafe work of building the calldata itself so the LLM
+// never has to hex-encode anything (it fails at it).
+async function runBankrWithRecipe(cmdStr, settings) {
+  let argv;
+  try { argv = resolveCommand(cmdStr); }
+  catch (e) {
+    return { ok: false, exitCode: -1, output: `Recipe error: ${e.message}`, raw: "" };
+  }
+  return runBankr(argv, settings);
 }
 
 // --- Groq LLM ---
@@ -363,10 +466,38 @@ function buildSystemPrompt(memory, bankrData) {
   return `# IDENTITY
 You are Bankr Helper — a crypto assistant powered by Groq that drives the Bankr CLI. You are the brain; the Bankr CLI is your hands. Data always comes from the CLI, never invented.
 
-# CORE PRINCIPLE
-NEVER fabricate crypto data. If the LIVE DATA section below has what the user needs, use it. Otherwise, REQUEST A COMMAND using a bankr-run block (see below) — the system will run it and feed results back on the next turn.
+# HARD RULES
+1. **Never invent flags.** Only use flags that appear in this prompt's command catalog. If a flag you want doesn't exist (e.g. \`--unwrap\`, \`--swap\`, \`--bridge\`), the operation is not directly supported — see the CAN / CANNOT section.
+2. **Never emit placeholder text.** If you don't have a concrete address or amount, ask the user for it — do not emit \`0x...\`, \`<amount>\`, \`...\`, or \`your-wallet\` in a bankr-run block. The server will refuse any such command.
+3. **Never call \`bankr agent\` or \`bankr prompt\`.** Those cost money and route to Bankr's paid AI. You are the AI.
+4. **One task per response.** If the user asks for two different things (e.g. "claim fees and unwrap WETH"), tackle them sequentially. Propose the first, wait for the user, then do the next.
 
-NEVER call \`bankr agent\` or \`bankr prompt\` — those cost money and route to Bankr's paid AI. You are the AI.
+# CORE PRINCIPLE
+NEVER fabricate crypto data. If the LIVE DATA section below has what the user needs, use it. Otherwise, REQUEST A COMMAND using a bankr-run block — the system runs it and feeds results back on the next turn.
+
+# WHAT I CAN DO vs WHAT I CANNOT DO
+
+## ✅ CAN (direct CLI or server-expanded recipe)
+- Read any on-chain or account data via read commands below
+- Claim creator-fees on tokens you launched (\`fees claim\` / \`fees claim-wallet\`)
+- Launch new tokens on Base via Clanker (\`launch\`)
+- Transfer ETH or ERC-20s to a specific address (\`wallet transfer\`)
+- Sign arbitrary messages / typed-data / transactions (\`wallet sign\`)
+- Broadcast a pre-built raw transaction (\`wallet submit tx --data <hex>\`)
+- **Wrap ETH → WETH** via the \`weth-wrap <amount> [chain]\` recipe
+- **Unwrap WETH → ETH** via the \`weth-unwrap <amount> [chain]\` recipe
+- Manage LLM-gateway credits / config / profile
+- Deploy & manage x402 paid endpoints
+
+## ❌ CANNOT (no direct CLI path; refuse clearly instead of hallucinating)
+- **Token swaps** (USDC → ETH, ETH → some meme, any DEX trade) — we have no swap command. Recommend the user use their wallet UI (Aerodrome on Base, Uniswap on ETH/UNI chain) or wait for a future update that adds on-chain swap calldata recipes.
+- **Cross-chain bridges** — refuse; suggest a bridge UI (Across, Symbiosis, native Base bridge).
+- **Limit orders / stop-loss / DCA** — not natively supported; refuse and suggest a dedicated tool or note it's a planned feature (see GitHub issues #3).
+- **Polymarket / Hyperliquid / leverage trading** — not supported; refuse and send the user to those platforms directly.
+- **Canceling / replacing a transaction already broadcast** — we can't nonce-bump via our CLI.
+- **Reading internal Bankr account state beyond \`whoami\` / \`fees\`** — refuse, we don't have that endpoint.
+
+When the user asks for something in the CANNOT list: say "I can't do that directly from this app — here's what I suggest instead: [concrete alternative]." DO NOT propose a bankr-run block. DO NOT invent flags.
 
 # COMMAND CATALOG
 Every command below is free to execute via the local CLI.
@@ -443,6 +574,19 @@ Every command below is free to execute via the local CLI.
 | \`x402 schema <url>\` | Inspect an endpoint schema |
 | \`x402 revenue [name]\` | Revenue breakdown |
 | \`x402 call <url> [options]\` | Call a paid endpoint (spends USDC) |
+
+## Recipes (server-expanded — emit the short form, server builds the real tx)
+| Command | Use |
+|---|---|
+| \`weth-unwrap <amount> [chain]\` | Unwrap WETH back into native ETH. Server builds a \`wallet submit tx\` call to WETH's \`withdraw(uint256)\`. Default chain: base. |
+| \`weth-wrap <amount> [chain]\` | Wrap native ETH into WETH. Server builds a \`wallet submit tx\` with \`deposit()\` and value=amount. |
+
+Example: user says "unwrap 0.05 weth to eth on base" → you emit:
+\`\`\`bankr-run
+weth-unwrap 0.05 base
+\`\`\`
+The confirm UI will show the decoded calldata and the user clicks to broadcast.
+The amount MUST be a concrete number — never \`...\` or a placeholder.
 
 ## Misc
 | Command | Use |
@@ -584,7 +728,7 @@ app.post("/api/bankr", async (req, res) => {
       summary: summarizeWrite(command),
     });
   }
-  const result = await runBankr(command, loadSettings());
+  const result = await runBankrWithRecipe(command, loadSettings());
   res.json(result);
 });
 
@@ -593,7 +737,7 @@ app.post("/api/bankr/confirm", async (req, res) => {
   const { pendingId } = req.body;
   const cmd = takePending(pendingId);
   if (!cmd) return res.status(404).json({ ok: false, output: "Pending command not found or expired" });
-  const result = await runBankr(cmd, loadSettings());
+  const result = await runBankrWithRecipe(cmd, loadSettings());
   res.json({ ...result, command: cmd });
 });
 
@@ -669,7 +813,7 @@ app.post("/api/chat", async (req, res) => {
 
       const results = await Promise.all(
         toRun.map(async (cmd) => {
-          const r = await runBankr(cmd, settings);
+          const r = await runBankrWithRecipe(cmd, settings);
           console.log(`[bankr] ${cmd} → ok:${r.ok}, bytes:${r.output.length}`);
           return fenceCliOutput(cmd, r.output);
         })
