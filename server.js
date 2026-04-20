@@ -613,7 +613,9 @@ app.post("/api/chat", async (req, res) => {
     return res.status(400).json({ error: "Missing message" });
   }
 
-  const threadId = reqThreadId || `thread_${Date.now()}`;
+  // Always use the sanitized form so the client echoes back the same id
+  // it'll see in /api/threads listings. Prevents subtle drift / confusion.
+  const threadId = sanitizeThreadId(reqThreadId || `thread_${Date.now()}`) || `thread_${Date.now()}`;
   const memory = loadMemory();
   let threadMessages = loadThread(threadId);
   threadMessages.push({ role: "user", content: message, timestamp: Date.now() });
