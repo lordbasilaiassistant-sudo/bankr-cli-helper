@@ -731,8 +731,9 @@
       // (or symbol if no address). Defense against habituated-clicking.
       let verifyInput = null;
       let expectedVerify = null;
+      const isRealLaunch = s.root === "launch" && !s.simulate;
       if (dangerous && s.to) expectedVerify = s.to.slice(-4).toUpperCase();
-      else if (s.simulate === false && s.symbol) expectedVerify = s.symbol.slice(-4).toUpperCase();
+      else if (isRealLaunch && s.symbol) expectedVerify = s.symbol.slice(-4).toUpperCase();
       if (expectedVerify) {
         const row = document.createElement("div");
         row.className = "verify-row";
@@ -1062,30 +1063,15 @@
         });
         const data = await r.json();
         if (data.confirmRequired) {
+          // Reuse the same structured confirm used in chat — structured fields,
+          // danger styling, and last-4-chars verification gate for transfers
+          // and real (non-simulate) launches.
           out.innerHTML = "";
-          const p = document.createElement("div");
-          p.style.color = "var(--yellow)";
-          p.textContent = "Write command — confirm to run:";
-          out.appendChild(p);
-          const c = document.createElement("code");
-          c.style.display = "block"; c.style.margin = "8px 0";
-          c.textContent = "$ bankr " + data.command;
-          out.appendChild(c);
-          const btn = document.createElement("button");
-          btn.className = "btn primary";
-          btn.textContent = "Confirm & run";
-          btn.onclick = async () => {
-            btn.disabled = true;
-            btn.textContent = "Running…";
-            const r2 = await fetch("/api/bankr/confirm", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ pendingId: data.pendingId }),
-            });
-            const d2 = await r2.json();
-            out.textContent = d2.output || JSON.stringify(d2);
-            if (!d2.ok) out.classList.add("err");
-          };
-          out.appendChild(btn);
+          out.appendChild(buildConfirm({
+            pendingId: data.pendingId,
+            command: data.command,
+            summary: data.summary,
+          }));
         } else {
           out.textContent = data.output || JSON.stringify(data);
           if (!data.ok) out.classList.add("err");

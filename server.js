@@ -271,7 +271,13 @@ function takePending(id) {
 // instead of burying them in a monospace line the user scans past).
 function summarizeWrite(cmdStr) {
   const args = parseBankrArgs(cmdStr);
-  const summary = { command: cmdStr, root: args.slice(0, 2).join(" ") };
+  // Root = first positional command(s) up to the first flag
+  const rootParts = [];
+  for (const a of args) {
+    if (a.startsWith("-")) break;
+    rootParts.push(a);
+  }
+  const summary = { command: cmdStr, root: rootParts.join(" ") || args[0] };
   const flagValue = (flag) => {
     const i = args.indexOf(flag);
     return i >= 0 && i + 1 < args.length ? args[i + 1] : null;
