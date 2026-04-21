@@ -260,7 +260,11 @@ async function resolveMaxAmount(root, chain, settings) {
   const portfolio = await getPortfolio(settings);
   if (!portfolio) throw new Error("max amount requires portfolio data — portfolio lookup failed");
   if (root === "weth-unwrap") {
-    const weth = findTokenBalance(portfolio, "WETH", chain);
+    const info = WETH_ADDRESSES[chain.toLowerCase()];
+    if (!info) throw new Error(`unsupported chain: ${chain}`);
+    // Address-match the canonical WETH so a scam token named "WETH"
+    // cannot shadow the real balance.
+    const weth = findTokenBalance(portfolio, "WETH", chain, info.address);
     if (!weth || !weth.balance || Number(weth.balance) <= 0) {
       throw new Error(`no WETH balance on ${chain}`);
     }
@@ -547,8 +551,11 @@ async function getPortfolio(settings, force = false) {
 }
 
 // Look up a token balance on a chain from a cached portfolio JSON.
-// Accepts symbol case-insensitively. Returns {balance, address} or null.
-function findTokenBalance(portfolio, symbol, chain) {
+// When the canonical contract address is known (WETH, USDC, etc.) pass it
+// as `addressFilter` — prevents scam-token shadowing where a fake token
+// with the same symbol appears earlier in the balances array and gets
+// picked up as the "real" one. Address match is case-insensitive.
+function findTokenBalance(portfolio, symbol, chain, addressFilter) {
   if (!portfolio || !portfolio.balances) return null;
   const chainKey = chain.toLowerCase();
   const chainData = portfolio.balances[chainKey];
@@ -561,17 +568,58 @@ function findTokenBalance(portfolio, symbol, chain) {
     return { balance: chainData.nativeBalance, address: "native", usd: chainData.nativeUsd };
   }
   const tokens = chainData.tokenBalances || [];
+  const wantAddr = addressFilter ? addressFilter.toLowerCase() : null;
   for (const t of tokens) {
     const tsym = (t.symbol || t.tokenSymbol || "").toUpperCase();
-    if (tsym === sym) {
-      return {
-        balance: t.balance || t.amount || t.formattedBalance,
-        address: t.address || t.tokenAddress,
-        usd: t.usd || t.usdValue,
-      };
-    }
+    if (tsym !== sym) continue;
+    const taddr = (t.address || t.tokenAddress || "").toLowerCase();
+    if (wantAddr && taddr !== wantAddr) continue; // scam-token guard
+    return {
+      balance: t.balance || t.amount || t.formattedBalance,
+      address: t.address || t.tokenAddress,
+      usd: t.usd || t.usdValue,
+    };
   }
   return null;
+}
+
+// Strip the injection-dangerous bits out of a free-form string that came
+// from the CLI / chain. Drops fence sentinels, code fences, and anything
+// looking like a new role marker, then caps length.
+function sanitizeUntrusted(v, maxLen = 200) {
+  if (typeof v !== "string") return v;
+  return v
+    .replace(/<<<[A-Z_]+>>>/g, "[fence]")
+    .replace(/```/g, "ʼʼʼ")
+    .replace(/\b(system|assistant|user)\s*:/gi, "_$1_:")
+    .replace(/[\x00-\x1F\x7F]/g, " ")
+    .slice(0, maxLen);
+}
+
+// Whitelist-project a portfolio blob before feeding it to the LLM. Keeps
+// the fields our prompt actually reasons over (balances, amounts, canonical
+// addresses) and drops everything else — no descriptions, no long names,
+// no nested metadata a scammer could stuff with instructions.
+function sanitizePortfolioForLLM(p) {
+  if (!p || typeof p !== "object" || !p.balances) return p;
+  const out = { evmAddress: p.evmAddress, solAddress: p.solAddress, balances: {} };
+  for (const [chain, data] of Object.entries(p.balances)) {
+    if (!data || typeof data !== "object") continue;
+    out.balances[chain] = {
+      nativeBalance: data.nativeBalance,
+      nativeUsd: data.nativeUsd,
+      total: data.total,
+      tokenBalances: (Array.isArray(data.tokenBalances) ? data.tokenBalances : [])
+        .slice(0, 50)
+        .map((t) => ({
+          symbol: sanitizeUntrusted(t.symbol || t.tokenSymbol || "", 20),
+          address: typeof t.address === "string" ? t.address.slice(0, 66) : (t.tokenAddress || ""),
+          balance: t.balance || t.amount || t.formattedBalance,
+          usd: t.usd || t.usdValue,
+        })),
+    };
+  }
+  return out;
 }
 
 function fenceCliOutput(cmd, output) {
@@ -796,6 +844,7 @@ app.get("/api/settings", (req, res) => {
 
 app.post("/api/settings", (req, res) => {
   const current = loadSettings();
+  const prevBankr = current.bankrApiKey;
   const { groqApiKey, groqModel, bankrApiKey } = req.body;
   // Only accept values that either look like a real key (prefix + length)
   // or are the explicit empty-string (for deliberate clearing via the UI).
@@ -820,6 +869,12 @@ app.post("/api/settings", (req, res) => {
     if (r.ok) current.bankrApiKey = r.value;
   }
   saveSettings(current);
+  // Invalidate the portfolio cache on key rotation so stale balances
+  // from the old wallet don't leak into the next chat turn's context.
+  if (current.bankrApiKey !== prevBankr) {
+    portfolioCache = { ts: 0, json: null };
+    console.log("[settings] bankr key changed — portfolio cache cleared");
+  }
   res.json({ ok: true });
 });
 
@@ -927,8 +982,9 @@ app.post("/api/chat", async (req, res) => {
     try {
       const portfolio = await getPortfolio(settings);
       if (portfolio) {
-        preData = fenceCliOutput("wallet portfolio --all --json (prefetched)",
-          JSON.stringify(portfolio, null, 2));
+        const clean = sanitizePortfolioForLLM(portfolio);
+        preData = fenceCliOutput("wallet portfolio --all --json (prefetched, sanitized)",
+          JSON.stringify(clean, null, 2));
       }
     } catch (_) {}
 
