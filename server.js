@@ -550,6 +550,151 @@ async function getPortfolio(settings, force = false) {
   }
 }
 
+// --- Intent-aware context loader ---
+// The chat handler used to pre-fetch ONLY the portfolio JSON. When a user
+// asked "claim my fees on token X", the LLM had no fees data in its context
+// and would either hallucinate "0.000000 claimable" or — best case — emit a
+// bankr-run for fees and re-prompt. Both outcomes wasted a turn.
+//
+// The fix: route on the user's message. Each provider is a small recipe
+// (cmd, ttl, trigger predicate, optional sanitizer). On each chat turn we
+// run every triggered provider in parallel, fence the outputs, and inject
+// them into the system prompt. Snapshots are also persisted to
+// data/context/*.txt so they're inspectable from the filesystem and
+// survive process restart.
+const CONTEXT_DIR = path.join(DATA_DIR, "context");
+if (!fs.existsSync(CONTEXT_DIR)) fs.mkdirSync(CONTEXT_DIR, { recursive: true });
+
+// Per-provider in-memory cache. Keyed by provider name. Disk file is the
+// fallback when memory is cold (e.g. after restart).
+const contextCache = new Map();
+
+const CONTEXT_PROVIDERS = {
+  // Always-on. The portfolio drives "unwrap my weth" / "send my usdc" /
+  // any balance-aware reasoning. Sanitized via sanitizePortfolioForLLM
+  // so a scam token's description can't sneak instructions through.
+  portfolio: {
+    label: "wallet portfolio --all --json (sanitized)",
+    cmd: "wallet portfolio --all --json",
+    ttl: 60_000,
+    trigger: () => true,
+    transform: (out) => {
+      const blob = extractFirstJsonObject(out);
+      if (!blob) return null;
+      try { return JSON.stringify(sanitizePortfolioForLLM(JSON.parse(blob)), null, 2); }
+      catch (_) { return null; }
+    },
+  },
+  // Fees data — claim, earn, creator royalties, fee dashboard.
+  fees: {
+    label: "fees --json (last 30d)",
+    cmd: "fees --json",
+    ttl: 60_000,
+    trigger: (msg) => /\b(fee|claim|earn|creator|royalt|claimable|payout|bonded|launched)\b/i.test(msg),
+  },
+  // Per-token fees — only fired when the user references a specific token
+  // address. Uses a dedicated cache key per address so two tokens don't
+  // share a slot.
+  feesForToken: {
+    label: "fees --token <addr> --json",
+    cmd: null, // built dynamically
+    ttl: 60_000,
+    trigger: (msg) => /0x[a-fA-F0-9]{40}/.test(msg) && /\b(fee|claim|earn|creator)\b/i.test(msg),
+    build: (msg) => {
+      const m = msg.match(/0x[a-fA-F0-9]{40}/);
+      if (!m) return null;
+      return { cacheKey: `feesForToken:${m[0].toLowerCase()}`, cmd: `fees --token ${m[0]} --json`, label: `fees --token ${m[0]} --json` };
+    },
+  },
+  whoami: {
+    label: "whoami",
+    cmd: "whoami",
+    ttl: 5 * 60_000,
+    trigger: (msg) => /\b(who am i|whoami|wallet|address|account|club|score|profile)\b/i.test(msg),
+  },
+  llmCredits: {
+    label: "llm credits",
+    cmd: "llm credits",
+    ttl: 5 * 60_000,
+    trigger: (msg) => /\b(credit|gateway|top.?up|llm balance)\b/i.test(msg),
+  },
+  x402List: {
+    label: "x402 list",
+    cmd: "x402 list",
+    ttl: 5 * 60_000,
+    trigger: (msg) => /\bx402\b|paid endpoint|api revenue/i.test(msg),
+  },
+  // Per-token info — fired when the user mentions a contract address
+  // along with a buy/info/price/swap intent. Gives the LLM real on-chain
+  // metadata so it can name + price the token instead of guessing.
+  tokenInfo: {
+    label: "tokens info <addr>",
+    cmd: null,
+    ttl: 60_000,
+    trigger: (msg) => /0x[a-fA-F0-9]{40}/.test(msg) && /\b(buy|swap|trade|price|info|tokeninfo|aerodrome|uniswap|chart)\b/i.test(msg),
+    build: (msg) => {
+      const m = msg.match(/0x[a-fA-F0-9]{40}/);
+      if (!m) return null;
+      return { cacheKey: `tokenInfo:${m[0].toLowerCase()}`, cmd: `tokens info ${m[0]} --chain 8453`, label: `tokens info ${m[0]} (base)` };
+    },
+  },
+};
+
+function persistContextSnapshot(name, label, output) {
+  // One file per provider. Atomic-ish via temp+rename so a concurrent read
+  // never sees a half-written file.
+  const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  const file = path.join(CONTEXT_DIR, `${safeName}.txt`);
+  const tmp = file + ".tmp";
+  const body = `# ${label}\n# fetched ${new Date().toISOString()}\n\n${output}\n`;
+  try {
+    fs.writeFileSync(tmp, body);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    console.log(`[context] failed to persist ${safeName}: ${e.message}`);
+  }
+}
+
+async function fetchProvider(name, providerOrBuilt, settings) {
+  const def = providerOrBuilt;
+  const cacheKey = def.cacheKey || name;
+  const hit = contextCache.get(cacheKey);
+  const now = Date.now();
+  if (hit && (now - hit.ts) < (def.ttl || 60_000)) return hit;
+
+  const r = await runBankr(def.cmd, settings);
+  let out = r.ok ? r.output : `(command failed exit=${r.exitCode}: ${r.output.slice(0, 200)})`;
+  if (r.ok && def.transform) {
+    const t = def.transform(r.output);
+    if (t) out = t;
+  }
+  const entry = { ts: now, label: def.label, output: out, ok: r.ok };
+  contextCache.set(cacheKey, entry);
+  persistContextSnapshot(cacheKey, def.label, out);
+  return entry;
+}
+
+async function buildLiveContext(message, settings) {
+  // Decide which providers to include based on the user message. Every
+  // triggered provider runs in parallel. Always-on providers (portfolio)
+  // run unconditionally so the LLM never has to ask for balances.
+  const tasks = [];
+  for (const [name, def] of Object.entries(CONTEXT_PROVIDERS)) {
+    if (!def.trigger(message)) continue;
+    let runDef = def;
+    if (def.build) {
+      const built = def.build(message);
+      if (!built) continue;
+      runDef = { ...def, cmd: built.cmd, label: built.label, cacheKey: built.cacheKey };
+    }
+    if (!runDef.cmd) continue;
+    tasks.push(fetchProvider(name, runDef, settings));
+  }
+  if (tasks.length === 0) return "";
+  const results = await Promise.all(tasks.map((p) => p.catch((e) => ({ ok: false, label: "(error)", output: e.message }))));
+  return results.map((r) => fenceCliOutput(r.label || "(unknown)", r.output || "(empty)")).join("\n\n");
+}
+
 // Look up a token balance on a chain from a cached portfolio JSON.
 // When the canonical contract address is known (WETH, USDC, etc.) pass it
 // as `addressFilter` — prevents scam-token shadowing where a fake token
@@ -660,7 +805,7 @@ NEVER fabricate crypto data. If the LIVE DATA section below has what the user ne
 - Deploy & manage x402 paid endpoints
 
 ## ❌ CANNOT (no direct CLI path; refuse clearly instead of hallucinating)
-- **Token swaps** (USDC → ETH, ETH → some meme, any DEX trade) — we have no swap command. Recommend the user use their wallet UI (Aerodrome on Base, Uniswap on ETH/UNI chain) or wait for a future update that adds on-chain swap calldata recipes.
+- **Token swaps** (USDC → ETH, ETH → some meme, any DEX trade) — we have no swap command. When the user wants to buy a Base token and gives a contract address, give them a direct Aerodrome swap URL of the form \`https://aerodrome.finance/swap?from=ETH&to=<CONTRACT>\` (or replace from with USDC for stable trades). For Ethereum mainnet, point to https://app.uniswap.org/swap?outputCurrency=<CONTRACT>. Don't just name the DEX — give the actual click-through link. If the message included contract data we pre-fetched (tokens info), surface name / price / market cap from it before the link.
 - **Cross-chain bridges** — refuse; suggest a bridge UI (Across, Symbiosis, native Base bridge).
 - **Limit orders / stop-loss / DCA** — not natively supported; refuse and suggest a dedicated tool or note it's a planned feature (see GitHub issues #3).
 - **Polymarket / Hyperliquid / leverage trading** — not supported; refuse and send the user to those platforms directly.
@@ -974,19 +1119,12 @@ app.post("/api/chat", async (req, res) => {
   threadMessages.push({ role: "user", content: message, timestamp: Date.now() });
 
   try {
-    // Pre-fetch portfolio so the LLM always has balance data available
-    // without needing a round-trip. This is the single biggest fix for
-    // reasoning failures like "unwrap my WETH" where the LLM didn't know
-    // what amount to use and kept asking the user.
+    // Intent-aware context loader — always pulls portfolio, additionally
+    // pulls fees / whoami / llm credits / x402 / per-token fees if the
+    // user message mentions them. Snapshots are also persisted to
+    // data/context/*.txt so they're auditable from disk.
     let preData = "";
-    try {
-      const portfolio = await getPortfolio(settings);
-      if (portfolio) {
-        const clean = sanitizePortfolioForLLM(portfolio);
-        preData = fenceCliOutput("wallet portfolio --all --json (prefetched, sanitized)",
-          JSON.stringify(clean, null, 2));
-      }
-    } catch (_) {}
+    try { preData = await buildLiveContext(message, settings); } catch (_) {}
 
     const systemPrompt = buildSystemPrompt(memory, preData);
     const history = threadMessages.slice(-20).map((m) => ({ role: m.role, content: m.content }));

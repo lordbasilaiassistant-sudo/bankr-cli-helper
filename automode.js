@@ -9,6 +9,16 @@ const STATE_FILE = path.join(DATA_DIR, "automode.json");
 const LOG_FILE = path.join(DATA_DIR, "automode-log.jsonl");
 const QUEUE_FILE = path.join(DATA_DIR, "token-queue.json");
 
+// Cap log to 5 MB rolling — appendFileSync forever bloats and slows reads.
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+// After this many consecutive failures, a token is quarantined (moved out of
+// the active queue into queue.failed[]) so a single bad token can't burn
+// through everyone's gas budget by infinitely retrying.
+const MAX_TOKEN_FAILURES = 3;
+// Bound the wallet-key fingerprint so we know if settings changed
+// underneath us mid-tick. Auto-mode disables itself on detected drift.
+let lastSeenKeyFingerprint = null;
+
 // --- Default config ---
 const DEFAULT_STATE = {
   enabled: false,
@@ -101,10 +111,64 @@ function saveQueue(q) {
   fs.writeFileSync(QUEUE_FILE, JSON.stringify(q, null, 2));
 }
 
-// --- Action log (append-only JSONL) ---
+// --- Action log (append-only JSONL with size-based rotation) ---
 function log(entry) {
   const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
-  fs.appendFileSync(LOG_FILE, line + "\n");
+  try {
+    fs.appendFileSync(LOG_FILE, line + "\n");
+    // Cheap rotation: every ~50 writes, check size. If exceeded, keep
+    // last half. Avoids unbounded growth without paying stat() per call.
+    if (Math.random() < 0.02) maybeRotateLog();
+  } catch (e) {
+    // Logging must never crash the engine. Swallow.
+    console.log(`[automode] log write failed: ${e.message}`);
+  }
+}
+
+function maybeRotateLog() {
+  try {
+    const st = fs.statSync(LOG_FILE);
+    if (st.size <= LOG_MAX_BYTES) return;
+    const all = fs.readFileSync(LOG_FILE, "utf8").split("\n").filter(Boolean);
+    const keep = all.slice(Math.floor(all.length / 2));
+    fs.writeFileSync(LOG_FILE + ".tmp", keep.join("\n") + "\n");
+    fs.renameSync(LOG_FILE + ".tmp", LOG_FILE);
+    console.log(`[automode] log rotated, kept ${keep.length}/${all.length} lines`);
+  } catch (e) {
+    console.log(`[automode] log rotate failed: ${e.message}`);
+  }
+}
+
+// Find the first balanced JSON object in a string. Replaces the previous
+// greedy /\{[\s\S]*\}/ which matched from the first { to the LAST },
+// merging multiple JSON blobs in CLI output and producing parse errors —
+// the kind of "intermittent fees claim" failure that's nearly impossible
+// to reproduce because it depends on the order CLI prints things.
+function extractFirstJsonObject(s) {
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c === "\\") { esc = true; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") depth++;
+    else if (c === "}") { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  return null;
+}
+
+// Settings fingerprint — short hash of the bankr key suffix so we can
+// detect "key was rotated mid-cycle" without ever logging the key itself.
+function keyFingerprint(settings) {
+  const k = settings && settings.bankrApiKey ? settings.bankrApiKey : "";
+  if (!k) return "(none)";
+  return k.slice(0, 4) + "…" + k.slice(-4);
 }
 
 function readLog(lastN = 100) {
@@ -147,50 +211,89 @@ function markRan(state, action) {
 // --- Actions ---
 // Each action is an async fn given a ctx { runBankr, settings, state, log }
 
+// Bounded read retry — Bankr's read endpoints occasionally 500. Without a
+// retry, every transient failure marks the action ran (markRan updates
+// lastRun), so the action sleeps for a full interval before being retried.
+// Three tries with linear backoff covers the typical blip without burning
+// minutes on a real outage.
+async function readWithRetry(ctx, cmd, maxAttempts = 3) {
+  let last = null;
+  for (let i = 0; i < maxAttempts; i++) {
+    last = await ctx.runBankr(cmd, ctx.settings);
+    if (last.ok) return last;
+    if (i < maxAttempts - 1) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+  }
+  return last;
+}
+
 async function actionRefreshWhoami(ctx) {
-  const r = await ctx.runBankr("whoami", ctx.settings);
+  const r = await readWithRetry(ctx, "whoami");
   ctx.log({ action: "refresh_whoami", ok: r.ok, bytes: r.output.length });
   return r;
 }
 
 async function actionSnapshotPortfolio(ctx) {
-  const r = await ctx.runBankr("wallet portfolio --all --json", ctx.settings);
+  const r = await readWithRetry(ctx, "wallet portfolio --all --json");
   let summary = null;
   if (r.ok) {
     try {
-      const jsonMatch = r.output.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const p = JSON.parse(jsonMatch[0]);
+      const blob = extractFirstJsonObject(r.output);
+      if (blob) {
+        const p = JSON.parse(blob);
+        // Sum native balances + total per chain — gives a realistic "total
+        // wallet value" instead of relying on a single field that the CLI
+        // may or may not include depending on flags.
+        let totalUsd = 0;
+        const chains = [];
+        if (p.balances && typeof p.balances === "object") {
+          for (const [chain, data] of Object.entries(p.balances)) {
+            chains.push(chain);
+            totalUsd += Number(data.total || data.nativeUsd || 0);
+          }
+        }
+        // Track native ETH on Base — used by preflightLaunch to refuse
+        // launches that would drain gas reserves.
+        const baseEthWei = (p.balances && p.balances.base && p.balances.base.nativeBalance)
+          ? String(p.balances.base.nativeBalance) : null;
         summary = {
-          totalUsd: p.totalUsd ?? p.total ?? null,
-          tokenCount: (p.tokens || p.balances || []).length,
-          chains: p.chains ? Object.keys(p.chains) : undefined,
+          totalUsd: totalUsd || null,
+          tokenCount: chains.reduce((acc, c) => acc + ((p.balances[c].tokenBalances || []).length), 0),
+          chains,
+          baseEthWei,
         };
       }
-    } catch (_) {
-      // portfolio may not be pure JSON; fall back to text preview
-    }
-    if (!summary) {
-      summary = { preview: r.output.slice(0, 400) };
-    }
+    } catch (_) {}
+    if (!summary) summary = { preview: r.output.slice(0, 400) };
     ctx.state.state.lastPortfolio = summary;
   }
-  ctx.log({ action: "snapshot_portfolio", ok: r.ok, summary });
+  ctx.log({ action: "snapshot_portfolio", ok: r.ok, summary, error: r.ok ? undefined : r.output.slice(0, 200) });
   return r;
 }
 
 async function actionClaimFees(ctx) {
-  // First check claimable
-  const read = await ctx.runBankr("fees --json", ctx.settings);
+  const read = await readWithRetry(ctx, "fees --json");
+  // CRITICAL: if the fees read fails, do NOT proceed to claim. The previous
+  // code treated read-failure as "unknown claimable" and claimed anyway,
+  // which on a stale wallet just wasted gas on a no-op fees claim-wallet.
+  if (!read.ok) {
+    ctx.log({ action: "claim_fees", skipped: "read_failed", error: read.output.slice(0, 200) });
+    return { ok: false, skipped: true, reason: "read_failed" };
+  }
   let claimable = null;
-  if (read.ok) {
-    try {
-      const m = read.output.match(/\{[\s\S]*\}/);
-      if (m) {
-        const j = JSON.parse(m[0]);
-        claimable = j.totalClaimableUsd || j.claimableUsd || j.claimable || null;
+  try {
+    const blob = extractFirstJsonObject(read.output);
+    if (blob) {
+      const j = JSON.parse(blob);
+      claimable = j.totalClaimableUsd ?? j.claimableUsd ?? j.claimable ?? null;
+      // Doppler / Clanker payload doesn't expose totalClaimableUsd — sum
+      // per-token if needed. Falls back to "claim anyway" only if we
+      // truly can't parse anything.
+      if (claimable === null && Array.isArray(j.tokens)) {
+        claimable = j.tokens.reduce((acc, t) => acc + Number(t.claimableUsd || t.usd || 0), 0);
       }
-    } catch (_) {}
+    }
+  } catch (e) {
+    ctx.log({ action: "claim_fees", note: "json_parse_failed", error: e.message });
   }
 
   const threshold = ctx.state.limits.claimThresholdUsd;
@@ -199,9 +302,8 @@ async function actionClaimFees(ctx) {
     return { ok: true, skipped: true };
   }
 
-  // Attempt the claim
   const r = await ctx.runBankr("fees claim-wallet --all -y", ctx.settings);
-  if (r.ok && claimable !== null) {
+  if (r.ok && claimable) {
     ctx.state.state.totalClaimedUsd = (ctx.state.state.totalClaimedUsd || 0) + claimable;
     ctx.state.state.lastClaimUsd = claimable;
   }
@@ -218,6 +320,20 @@ async function actionLaunchToken(ctx) {
   if (ctx.state.state.launchesToday >= cap) {
     ctx.log({ action: "launch_token", skipped: "daily_cap", cap });
     return { ok: true, skipped: true };
+  }
+
+  // Reserve check — refuse to launch if Base ETH balance is below the
+  // configured floor. A failed launch still costs gas; better to skip and
+  // let the user top up than to grind their wallet to zero on retries.
+  const reserveWei = BigInt(ctx.state.limits.minEthReserveWei || "0");
+  const baseEthStr = ctx.state.state.lastPortfolio && ctx.state.state.lastPortfolio.baseEthWei;
+  if (reserveWei > 0n && baseEthStr) {
+    let baseWei;
+    try { baseWei = BigInt(baseEthStr); } catch (_) { baseWei = null; }
+    if (baseWei !== null && baseWei < reserveWei) {
+      ctx.log({ action: "launch_token", skipped: "below_eth_reserve", baseWei: baseEthStr, reserveWei: reserveWei.toString() });
+      return { ok: true, skipped: true, reason: "below_eth_reserve" };
+    }
   }
 
   const queue = loadQueue();
@@ -256,9 +372,23 @@ async function actionLaunchToken(ctx) {
     ctx.state.state.launchesToday += 1;
     ctx.state.state.totalLaunches = (ctx.state.state.totalLaunches || 0) + 1;
   } else {
-    // push token back to front of queue on failure
-    queue.queue.unshift(token);
-    saveQueue(queue);
+    // Failure quarantine: track per-token failure count. After
+    // MAX_TOKEN_FAILURES the token is moved into queue.failed[] so it
+    // stops eating launch slots / gas on every tick. The user can
+    // inspect queue.failed and reinstate manually if they want to try
+    // again with different params.
+    const q2 = loadQueue();
+    token._failures = (token._failures || 0) + 1;
+    if (token._failures >= MAX_TOKEN_FAILURES) {
+      q2.failed = q2.failed || [];
+      q2.failed.unshift({ ...token, lastError: r.output.slice(0, 300), quarantinedAt: new Date().toISOString() });
+      ctx.log({ action: "launch_token", ok: false, token, quarantined: true, failures: token._failures });
+    } else {
+      q2.queue.unshift(token);
+      ctx.log({ action: "launch_token", ok: false, token, failures: token._failures, output: r.output.slice(0, 500) });
+    }
+    saveQueue(q2);
+    return r;
   }
   ctx.log({ action: "launch_token", ok: r.ok, token, output: r.output.slice(0, 500) });
   return r;
@@ -286,10 +416,35 @@ async function tick() {
 
     maybeRollDailyCounters(state);
 
+    const settings = loadSettingsRef();
+
+    // Preflight #1: refuse to act if the Bankr API key is missing. Without
+    // it the CLI can't authenticate any action and we'd just spam failures.
+    if (!settings || !settings.bankrApiKey) {
+      log({ action: "tick_halt", reason: "missing_bankr_key" });
+      // Auto-disable so the engine doesn't keep firing every minute.
+      state.enabled = false;
+      saveState(state);
+      return;
+    }
+
+    // Preflight #2: detect key rotation mid-cycle. If the user changed
+    // their bankr key (e.g. through Settings), we refuse to keep running
+    // automated actions on the new wallet without explicit re-enable.
+    // First-tick captures the fingerprint; subsequent ticks compare.
+    const fp = keyFingerprint(settings);
+    if (lastSeenKeyFingerprint && lastSeenKeyFingerprint !== fp) {
+      log({ action: "tick_halt", reason: "wallet_key_rotated", from: lastSeenKeyFingerprint, to: fp });
+      state.enabled = false;
+      saveState(state);
+      lastSeenKeyFingerprint = fp;
+      return;
+    }
+    lastSeenKeyFingerprint = fp;
+
     const due = Object.keys(ACTIONS).filter((a) => shouldRun(state, a));
     if (due.length === 0) return;
 
-    const settings = loadSettingsRef();
     const ctx = {
       runBankr: runBankrRef,
       settings,
