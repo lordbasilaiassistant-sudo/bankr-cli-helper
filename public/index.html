@@ -1172,19 +1172,39 @@
     }
 
     async function addToQueue() {
-      const name = document.getElementById("qName").value.trim();
-      const symbol = document.getElementById("qSymbol").value.trim().toUpperCase();
-      if (!name || !symbol) return alert("Name and symbol required.");
+      const nameEl = document.getElementById("qName");
+      const symEl = document.getElementById("qSymbol");
+      const name = nameEl.value.trim();
+      const symbol = symEl.value.trim().toUpperCase();
+      const flashErr = (msg) => {
+        // Inline border + title flash. Better than alert() which blocks
+        // the whole page and on Windows can deadlock the extension.
+        [nameEl, symEl].forEach((el) => {
+          el.style.borderColor = "var(--red)";
+          el.title = msg;
+        });
+        setTimeout(() => [nameEl, symEl].forEach((el) => { el.style.borderColor = ""; el.title = ""; }), 2500);
+      };
+      if (!name || !symbol) return flashErr("Name and symbol required.");
+      // Mirror server-side regex so the user gets feedback instantly instead
+      // of a silent rejection from POST that the previous code never showed.
+      if (!/^[A-Za-z0-9 _\-]{1,40}$/.test(name)) return flashErr("Name: letters/numbers/space/_/- up to 40 chars.");
+      if (!/^[A-Z0-9]{1,10}$/.test(symbol)) return flashErr("Symbol: A-Z/0-9 only, up to 10.");
       const r = await fetch("/api/automode/queue");
       const q = await r.json();
       q.queue.push({ name, symbol, theme: "user-added" });
-      await fetch("/api/automode/queue", {
+      const post = await fetch("/api/automode/queue", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(q),
       });
-      document.getElementById("qName").value = "";
-      document.getElementById("qSymbol").value = "";
-      await refreshAutomode();
+      if (!post.ok) return flashErr("Server rejected the entry.");
+      const after = await post.json();
+      // If the server filtered our entry out (validation), warn — don't
+      // silently clear the form on a no-op like the old code did.
+      if (after.queue.length !== q.queue.length) return flashErr("Entry was filtered by server validation.");
+      nameEl.value = "";
+      symEl.value = "";
+      await refreshAutomode(true);
     }
 
     async function removeFromQueue(idx) {
