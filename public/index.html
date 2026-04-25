@@ -565,6 +565,18 @@
     let currentThread = null;
     let sending = false;
     let autoState = null;
+    // In-flight automode request lock — single source of truth for "the user
+    // clicked something that mutates auto-mode state, don't accept another
+    // click until the round-trip completes". Fixes the rapid-click race where
+    // two clicks both read the same stale autoState and post the same value.
+    let autoBusy = false;
+    // True while an action toggle is being interacted with (focus inside the
+    // panel). Polling renders are skipped during this window so we don't tear
+    // down the input the user is typing into.
+    let autoInteractive = false;
+    // Last rendered fingerprint — lets us bail out of full re-render when
+    // nothing visible has actually changed since the previous render.
+    let autoLastFingerprint = "";
 
     // =================== INIT ===================
     async function init() {
@@ -574,6 +586,15 @@
       await refreshOverview();
       setInterval(refreshAutomode, 15_000);
       setInterval(refreshOverview, 30_000);
+      // Track interactive state on the auto panel so polling renders don't
+      // steal focus while the user is editing an interval/limit field.
+      const autoEl = document.getElementById("autoPanel");
+      autoEl.addEventListener("focusin", () => { autoInteractive = true; });
+      autoEl.addEventListener("focusout", () => {
+        // Defer so a click on a button counts as "still interacting" for a
+        // moment — prevents the polled render from racing the click handler.
+        setTimeout(() => { autoInteractive = false; }, 800);
+      });
     }
 
     async function refreshStatus() {
@@ -849,78 +870,138 @@
     }
 
     // =================== AUTOMODE ===================
-    async function refreshAutomode() {
+    // The top-of-page toggle reflects state from BOTH the topbar pill and
+    // the badge in the sidebar. Always-on render — even outside autoPanel —
+    // because those controls are visible regardless of which panel is active.
+    async function refreshAutomode(force) {
       try {
         const r = await fetch("/api/automode");
         autoState = await r.json();
-        renderAutomode();
+        renderAutomode(force);
       } catch (_) {}
     }
 
-    function renderAutomode() {
+    function renderAutomode(force) {
       if (!autoState) return;
 
-      // Top toggle
+      // Always update the always-visible bits (top toggle, kill button, badge)
+      // — those don't take user input, so re-render is safe.
       const tog = document.getElementById("automodeToggle");
       const status = document.getElementById("automodeStatus");
       const badge = document.getElementById("autoBadge");
       const killBtn = document.getElementById("killBtn");
       tog.classList.remove("on", "kill");
-      if (autoState.killSwitch) { tog.classList.add("kill"); status.textContent = "KILL"; badge.style.display = "inline-block"; badge.textContent = "KILL"; badge.style.background = "var(--red)"; killBtn.style.display = "none"; }
-      else if (autoState.enabled) { tog.classList.add("on"); status.textContent = "on"; badge.style.display = "inline-block"; badge.textContent = "ON"; badge.style.background = "var(--green)"; killBtn.style.display = "inline-block"; }
-      else { status.textContent = "off"; badge.style.display = "none"; killBtn.style.display = "none"; }
+      if (autoState.killSwitch) {
+        tog.classList.add("kill"); status.textContent = "KILL";
+        badge.style.display = "inline-block"; badge.textContent = "KILL"; badge.style.background = "var(--red)";
+        killBtn.style.display = "none";
+      } else if (autoState.enabled) {
+        tog.classList.add("on"); status.textContent = "on";
+        badge.style.display = "inline-block"; badge.textContent = "ON"; badge.style.background = "var(--green)";
+        killBtn.style.display = "inline-block";
+      } else {
+        status.textContent = "off"; badge.style.display = "none"; killBtn.style.display = "none";
+      }
 
-      // Stats
+      // Stats (text-only, safe to update on every poll)
       document.getElementById("statClaimed").textContent = "$" + (autoState.state.totalClaimedUsd || 0).toFixed(2);
       document.getElementById("statLaunches").textContent = autoState.state.totalLaunches || 0;
       document.getElementById("statToday").textContent = autoState.state.launchesToday || 0;
       document.getElementById("statTodayCap").textContent = "cap " + autoState.limits.maxLaunchesPerDay + "/day";
 
-      // Actions
+      // Skip the heavy DOM rebuild if (a) the user is mid-interaction with
+      // the panel, or (b) nothing visibly changed. force=true bypasses both —
+      // used right after the user clicks something so they see the result.
+      const fingerprint = JSON.stringify({
+        s: autoState.schedule,
+        l: autoState.limits,
+        lr: autoState.state.lastRun,
+      });
+      if (!force && (autoInteractive || fingerprint === autoLastFingerprint)) {
+        renderAutoLog(); // log is read-only, always safe to refresh
+        return;
+      }
+      autoLastFingerprint = fingerprint;
+
+      renderAutoActions();
+      renderAutoLimits();
+      renderAutoQueue();
+      renderAutoLog();
+    }
+
+    function renderAutoActions() {
       const actionsEl = document.getElementById("autoActions");
-      actionsEl.innerHTML = "";
       const descs = {
         claimFees: "Scan for claimable creator fees and claim any over threshold",
         launchToken: "Deploy the next token from the launch queue",
         snapshotPortfolio: "Pull portfolio balances and record snapshot",
         refreshWhoami: "Refresh account info / wallet bindings",
       };
+      // Targeted update: if the row already exists, just update its values
+      // and toggle state — never wipe innerHTML. Preserves focus + caret.
+      const seen = new Set();
       Object.entries(autoState.schedule).forEach(([action, cfg]) => {
+        seen.add(action);
         const lastRun = autoState.state.lastRun[action];
         const lastStr = lastRun ? new Date(lastRun).toLocaleTimeString() : "never";
-        const row = document.createElement("div");
-        row.className = "auto-row";
-        row.innerHTML = `
-          <div style="flex:1;">
-            <div class="name">${action}</div>
-            <div class="desc">${descs[action] || ""} · last ${lastStr}</div>
-          </div>
-          <input type="number" min="1" max="10080" value="${cfg.intervalMin}" onchange="setInterval_('${action}', this.value)"><span class="desc">min</span>
-          <button class="btn small" onclick="runNow('${action}')">Run now</button>
-          <div class="tog ${cfg.enabled ? 'on' : ''}" onclick="toggleAction('${action}')"></div>
-        `;
-        actionsEl.appendChild(row);
+        let row = actionsEl.querySelector(`[data-action="${action}"]`);
+        if (!row) {
+          row = document.createElement("div");
+          row.className = "auto-row";
+          row.dataset.action = action;
+          row.innerHTML = `
+            <div style="flex:1;">
+              <div class="name">${action}</div>
+              <div class="desc"></div>
+            </div>
+            <input type="number" min="1" max="10080" class="interval-input"><span class="desc">min</span>
+            <button class="btn small run-now-btn">Run now</button>
+            <div class="tog action-tog"></div>
+          `;
+          row.querySelector(".interval-input").addEventListener("change", (e) => setActionInterval(action, e.target.value));
+          row.querySelector(".run-now-btn").addEventListener("click", (e) => runNow(action, e.currentTarget));
+          row.querySelector(".action-tog").addEventListener("click", (e) => toggleAction(action, e.currentTarget));
+          actionsEl.appendChild(row);
+        }
+        row.querySelector(".desc").textContent = (descs[action] || "") + " · last " + lastStr;
+        const inp = row.querySelector(".interval-input");
+        // Only update value if the user isn't currently typing in this input.
+        if (document.activeElement !== inp) inp.value = cfg.intervalMin;
+        const togEl = row.querySelector(".action-tog");
+        togEl.classList.toggle("on", !!cfg.enabled);
       });
+      // Drop rows whose action is no longer in the schedule
+      Array.from(actionsEl.querySelectorAll("[data-action]"))
+        .filter((r) => !seen.has(r.dataset.action))
+        .forEach((r) => r.remove());
+    }
 
-      // Limits
+    function renderAutoLimits() {
       const limitsEl = document.getElementById("autoLimits");
-      limitsEl.innerHTML = "";
       const limits = [
         ["maxLaunchesPerDay", "Max token launches per day"],
         ["claimThresholdUsd", "Minimum $ USD before claim"],
         ["maxUsdPerAction", "Max $ USD per single action"],
       ];
       limits.forEach(([k, label]) => {
-        const row = document.createElement("div");
-        row.className = "auto-row";
-        row.innerHTML = `
-          <div style="flex:1;"><div class="name">${label}</div><div class="desc">${k}</div></div>
-          <input type="number" min="0" step="0.01" value="${autoState.limits[k]}" onchange="setLimit('${k}', this.value)">
-        `;
-        limitsEl.appendChild(row);
+        let row = limitsEl.querySelector(`[data-limit="${k}"]`);
+        if (!row) {
+          row = document.createElement("div");
+          row.className = "auto-row";
+          row.dataset.limit = k;
+          row.innerHTML = `
+            <div style="flex:1;"><div class="name">${label}</div><div class="desc">${k}</div></div>
+            <input type="number" min="0" step="0.01" class="limit-input">
+          `;
+          row.querySelector(".limit-input").addEventListener("change", (e) => setLimit(k, e.target.value));
+          limitsEl.appendChild(row);
+        }
+        const inp = row.querySelector(".limit-input");
+        if (document.activeElement !== inp) inp.value = autoState.limits[k];
       });
+    }
 
-      // Queue
+    function renderAutoQueue() {
       fetch("/api/automode/queue").then((r) => r.json()).then((q) => {
         document.getElementById("queueSize").textContent = "(" + q.queue.length + ")";
         const ql = document.getElementById("queueList");
@@ -928,7 +1009,7 @@
         q.queue.forEach((tok, i) => {
           const row = document.createElement("div");
           row.className = "queue-item";
-          row.innerHTML = `<div><strong>${tok.name}</strong> <span class="meta">${tok.symbol} · ${tok.theme || ""}</span></div>`;
+          row.innerHTML = `<div><strong>${escHtml(tok.name)}</strong> <span class="meta">${escHtml(tok.symbol)} · ${escHtml(tok.theme || "")}</span></div>`;
           const del = document.createElement("button");
           del.className = "btn small danger";
           del.textContent = "x";
@@ -937,8 +1018,9 @@
           ql.appendChild(row);
         });
       });
+    }
 
-      // Log
+    function renderAutoLog() {
       fetch("/api/automode/log?n=50").then((r) => r.json()).then((log) => {
         const feed = document.getElementById("logFeed");
         feed.innerHTML = "";
@@ -948,7 +1030,8 @@
           div.className = "log-entry " + (e.ok === false ? "err" : e.ok === true ? "ok" : "");
           const ts = new Date(e.ts).toLocaleString();
           const extra = e.error ? "err: " + e.error :
-                        e.skipped ? "skipped: " + e.skipped :
+                        e.skipped ? "skipped: " + (Array.isArray(e.skipped) ? e.skipped.join(",") : e.skipped) :
+                        e.reason ? "reason: " + e.reason :
                         e.claimable !== undefined ? "claimable: " + e.claimable :
                         e.summary ? JSON.stringify(e.summary).slice(0, 200) :
                         (e.output || "").slice(0, 200);
@@ -958,69 +1041,134 @@
       });
     }
 
+    // Wrap every state-mutating auto-mode call so a second click while the
+    // first request is in-flight is dropped. Without this, two rapid clicks
+    // both read the same stale autoState and POST the same target value —
+    // looking like the toggle "didn't respond" to the second press.
+    async function withAutoLock(fn) {
+      if (autoBusy) return;
+      autoBusy = true;
+      const tog = document.getElementById("automodeToggle");
+      tog.style.opacity = "0.6";
+      tog.style.pointerEvents = "none";
+      try { await fn(); }
+      finally {
+        autoBusy = false;
+        tog.style.opacity = "";
+        tog.style.pointerEvents = "";
+      }
+    }
+
     async function toggleAutomode() {
       if (!autoState) return;
-      if (autoState.killSwitch) {
-        await fetch("/api/automode/reset-kill", { method: "POST" });
-      } else {
-        await fetch("/api/automode/toggle", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled: !autoState.enabled }),
-        });
-      }
-      await refreshAutomode();
+      await withAutoLock(async () => {
+        // Snapshot intent at click time; reset-kill is its own endpoint so the
+        // server is the only authority on whether a flip applied.
+        if (autoState.killSwitch) {
+          await fetch("/api/automode/reset-kill", { method: "POST" });
+        } else {
+          const target = !autoState.enabled;
+          await fetch("/api/automode/toggle", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: target }),
+          });
+        }
+        await refreshAutomode(true);
+      });
     }
 
+    // Inline kill-switch confirmation — replaces the blocking confirm() popup
+    // (which can deadlock the page if a JS dialog steals focus on Windows
+    // chrome restore). Press once → "Click again to confirm" within 4s.
+    let _killArmed = false;
+    let _killArmTimer = null;
     async function killSwitch() {
-      if (!confirm("Activate kill switch? This halts all auto actions immediately.")) return;
-      await fetch("/api/automode/kill", { method: "POST" });
-      await refreshAutomode();
+      const btn = document.getElementById("killBtn");
+      if (!_killArmed) {
+        _killArmed = true;
+        const orig = btn.textContent;
+        btn.textContent = "CONFIRM";
+        btn.style.background = "var(--red)";
+        btn.style.color = "white";
+        clearTimeout(_killArmTimer);
+        _killArmTimer = setTimeout(() => {
+          _killArmed = false;
+          btn.textContent = orig;
+          btn.style.background = "";
+          btn.style.color = "";
+        }, 4000);
+        return;
+      }
+      _killArmed = false;
+      clearTimeout(_killArmTimer);
+      btn.textContent = "STOPPING…";
+      btn.disabled = true;
+      try {
+        await fetch("/api/automode/kill", { method: "POST" });
+        await refreshAutomode(true);
+      } finally {
+        btn.disabled = false;
+        btn.style.background = "";
+        btn.style.color = "";
+      }
     }
 
-    async function runNow(action) {
-      const btn = event.target;
+    async function runNow(action, btn) {
+      if (!btn) btn = event && event.target;
+      if (!btn) return;
       btn.disabled = true;
+      const orig = btn.textContent;
       btn.textContent = "Running…";
       try {
-        const r = await fetch("/api/automode/run-now/" + action, { method: "POST" });
-        await r.json();
+        await fetch("/api/automode/run-now/" + action, { method: "POST" });
       } catch (_) {}
       btn.disabled = false;
-      btn.textContent = "Run now";
-      await refreshAutomode();
+      btn.textContent = orig;
+      await refreshAutomode(true);
     }
 
-    async function toggleAction(action) {
-      const cfg = autoState.schedule[action];
-      const patch = { schedule: { [action]: { ...cfg, enabled: !cfg.enabled } } };
-      await fetch("/api/automode/config", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      await refreshAutomode();
+    async function toggleAction(action, el) {
+      if (autoBusy) return;
+      autoBusy = true;
+      try {
+        const cfg = autoState.schedule[action];
+        const targetEnabled = !cfg.enabled;
+        // Optimistic UI — flip the dot immediately so the click feels alive
+        // even if the server takes 200ms.
+        if (el) el.classList.toggle("on", targetEnabled);
+        autoState.schedule[action].enabled = targetEnabled;
+        const patch = { schedule: { [action]: { ...cfg, enabled: targetEnabled } } };
+        await fetch("/api/automode/config", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        await refreshAutomode(true);
+      } finally { autoBusy = false; }
     }
 
-    async function setInterval_(action, val) {
+    async function setActionInterval(action, val) {
       const v = parseInt(val, 10);
       if (!v || v < 1) return;
       const cfg = autoState.schedule[action];
+      autoState.schedule[action].intervalMin = v;
       const patch = { schedule: { [action]: { ...cfg, intervalMin: v } } };
       await fetch("/api/automode/config", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      await refreshAutomode();
+      // Silent refresh — don't redraw, the user is still interacting with the
+      // input. Polling will pick up the new value within 15s anyway.
     }
 
     async function setLimit(key, val) {
       const v = parseFloat(val);
       if (isNaN(v)) return;
+      autoState.limits[key] = v;
       const patch = { limits: { [key]: v } };
       await fetch("/api/automode/config", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      await refreshAutomode();
     }
 
     async function addToQueue() {

@@ -281,7 +281,7 @@ async function tick() {
   if (tickBusy) return;
   tickBusy = true;
   try {
-    const state = loadState();
+    let state = loadState();
     if (!state.enabled || state.killSwitch) return;
 
     maybeRollDailyCounters(state);
@@ -298,7 +298,19 @@ async function tick() {
     };
 
     for (const action of due) {
-      if (state.killSwitch) break;
+      // Re-read state BEFORE each action so a kill or disable from the UI
+      // takes effect immediately, not at the next 60s tick. The UI writes
+      // straight to disk via setKillSwitch / updateConfig, so loadState
+      // here picks it up. Also re-pin ctx.state so action handlers see fresh.
+      const fresh = loadState();
+      if (!fresh.enabled || fresh.killSwitch) {
+        const remaining = due.slice(due.indexOf(action));
+        log({ action: "tick_halt", reason: fresh.killSwitch ? "kill_switch" : "disabled", skipped: remaining });
+        state = fresh;
+        break;
+      }
+      ctx.state = fresh;
+      state = fresh;
       try {
         await ACTIONS[action](ctx);
       } catch (e) {
