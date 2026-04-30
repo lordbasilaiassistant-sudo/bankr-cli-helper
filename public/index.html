@@ -396,6 +396,106 @@
     }
     .launches-table .row .claimable { color: var(--green); font-weight: 600; }
 
+    /* === Files page (Phase 7) === */
+    .files-page {
+      display: grid; grid-template-columns: 280px 1fr; gap: 12px;
+      padding: 16px 24px; height: calc(100vh - 60px);
+    }
+    .files-pane { display: flex; flex-direction: column; min-height: 0; }
+    .files-toolbar {
+      display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 6px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px 8px 0 0; border-bottom: none; align-items: center;
+    }
+    .files-toolbar button {
+      padding: 5px 10px; font-size: 11px; background: var(--surface2);
+      color: var(--text-dim); border: 1px solid var(--border);
+      border-radius: 4px; cursor: pointer;
+    }
+    .files-toolbar button:hover { color: var(--text); border-color: var(--accent); }
+    .files-toolbar input[type="text"] {
+      flex: 1; min-width: 100px; padding: 4px 8px; font-size: 11px;
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 4px;
+    }
+    .files-storage {
+      padding: 6px 10px; font-size: 10px; color: var(--text-dim);
+      background: var(--surface); border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+    .files-storage .bar {
+      height: 3px; background: var(--surface3); border-radius: 2px;
+      margin-top: 4px; overflow: hidden;
+    }
+    .files-storage .bar > div {
+      height: 100%; background: var(--accent); transition: width 0.3s;
+    }
+    .files-tree {
+      flex: 1; overflow-y: auto; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 0 0 8px 8px;
+      border-top: none; padding: 4px;
+    }
+    .files-tree pre {
+      font-family: 'SF Mono', monospace; font-size: 11px;
+      color: var(--text-dim); white-space: pre-wrap; padding: 6px 8px;
+      line-height: 1.6;
+    }
+    .files-tree .row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    .files-tree .row:hover { background: var(--surface2); }
+    .files-tree .row.selected { background: rgba(108,92,231,0.2); }
+    .files-tree .row .icon { font-size: 11px; opacity: 0.6; width: 14px; text-align: center; }
+    .files-tree .row .name { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .files-tree .row .size { color: var(--text-dim); font-size: 10px; font-family: 'SF Mono', monospace; }
+    .files-tree .row.memory .name { color: var(--accent-light); }
+    .files-tree .row.memory::after {
+      content: "memory"; font-size: 8px; padding: 1px 4px;
+      background: rgba(108,92,231,0.2); color: var(--accent-light);
+      border-radius: 4px; letter-spacing: 0.5px; margin-left: 4px;
+    }
+
+    .files-editor {
+      display: flex; flex-direction: column; min-height: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden;
+    }
+    .files-editor .head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; background: var(--surface2);
+      border-bottom: 1px solid var(--border); font-size: 12px;
+    }
+    .files-editor .path {
+      flex: 1; font-family: 'SF Mono', monospace; color: var(--text-dim);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .files-editor .head button {
+      padding: 4px 10px; font-size: 11px; background: var(--surface);
+      color: var(--text-dim); border: 1px solid var(--border);
+      border-radius: 4px; cursor: pointer;
+    }
+    .files-editor .head button:hover { color: var(--text); border-color: var(--accent); }
+    .files-editor .head button.primary {
+      background: var(--accent); color: white; border-color: var(--accent);
+    }
+    .files-editor .body {
+      flex: 1; overflow: auto; min-height: 0;
+    }
+    .files-editor pre, .files-editor textarea {
+      width: 100%; height: 100%; min-height: 200px;
+      padding: 12px 16px; background: transparent; color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+      border: none; outline: none; resize: none; box-sizing: border-box;
+      white-space: pre-wrap;
+    }
+    .files-editor pre { margin: 0; }
+    .files-editor .empty {
+      padding: 60px 30px; text-align: center; color: var(--text-dim);
+      font-size: 13px;
+    }
+    .files-editor .empty .big { font-size: 32px; opacity: 0.3; margin-bottom: 10px; }
+
     /* Stub panel — used by Phase-1 placeholders before pages land */
     .stub {
       padding: 40px 32px; max-width: 640px; margin: 0 auto;
@@ -982,20 +1082,28 @@
       </div>
     </div>
 
-    <!-- Files Panel (stub — Phase 7) -->
+    <!-- Files Panel (Phase 7) -->
     <div class="panel" id="filesPanel">
-      <div class="stub">
-        <h2>Files</h2>
-        <p class="lede">Bankr's agent filesystem — store skills, configs, MEMORY.md, references. Two-pane explorer with editor.</p>
-        <h3>Lands in Phase 7</h3>
-        <ul>
-          <li><strong>Tree</strong> <span class="pill free">free</span> — recursive listing from <code>files ls</code></li>
-          <li><strong>Preview / Editor</strong> — Prism syntax highlight, edit mode swaps to <code>&lt;textarea&gt;</code>, Save calls <code>files write</code> (gated)</li>
-          <li><strong>Toolbar</strong> — New File · New Folder · Upload · Download · Rename · Delete (all gated through Phase 3 confirm flow)</li>
-          <li><strong>Storage bar</strong> — from <code>files storage</code></li>
-          <li><strong>Search</strong> — <code>files search &lt;query&gt;</code></li>
-          <li><strong>/.memory/</strong> read-only badge — per <a href="https://docs.bankr.bot/agent/memory" target="_blank" style="color:var(--accent-light)">docs.bankr.bot/agent/memory</a></li>
-        </ul>
+      <div class="files-page">
+        <div class="files-pane">
+          <div class="files-toolbar">
+            <button onclick="filesNewFile()" title="New file">+ File</button>
+            <button onclick="filesNewFolder()" title="New folder">+ Folder</button>
+            <button onclick="filesUpload()" title="Upload">↑</button>
+            <button onclick="filesRefresh()" title="Refresh">↻</button>
+            <input type="text" id="filesSearch" placeholder="Search…" onkeydown="if(event.key==='Enter')filesDoSearch()">
+          </div>
+          <div class="files-storage" id="filesStorage">Loading…</div>
+          <div class="files-tree" id="filesTree">
+            <div class="empty" style="padding:20px 16px;color:var(--text-dim);font-size:12px">Loading…</div>
+          </div>
+        </div>
+        <div class="files-editor" id="filesEditor">
+          <div class="empty">
+            <div class="big">·</div>
+            Select a file to view or edit
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1161,6 +1269,7 @@
       if (id === "ordersPanel") renderOrdersCatalog();
       if (id === "positionsPanel") renderPositionsCatalog();
       if (id === "launchesPanel") renderLaunchesList();
+      if (id === "filesPanel") filesRefresh();
       // Reflect to URL hash if we got here from a click rather than hashchange
       const hash = PANEL_TO_HASH[id];
       if (hash && location.hash !== "#/" + hash) {
@@ -2555,6 +2664,242 @@
       // copy that's already in the markup.
       // If a user has launched via the wizard, the eventual claim flow can be
       // appended here from /api/automode/log filtered to launch_token entries.
+    }
+
+    // =================== FILES PAGE (Phase 7) ===================
+    let filesCurrentPath = "/";
+    let filesSelectedPath = null;
+    let filesIsEditing = false;
+
+    async function filesRefresh() {
+      // Storage bar
+      try {
+        const sr = await (await fetch("/api/files/storage")).json();
+        renderFilesStorage(sr.output || "");
+      } catch (_) {
+        document.getElementById("filesStorage").textContent = "Storage: ?";
+      }
+      // Tree
+      try {
+        const r = await fetch("/api/files/list?path=" + encodeURIComponent(filesCurrentPath));
+        const j = await r.json();
+        renderFilesTree(j.output || "", filesCurrentPath);
+      } catch (e) {
+        document.getElementById("filesTree").innerHTML =
+          `<div class="empty" style="padding:20px;color:var(--red);font-size:12px">Error: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    function renderFilesStorage(text) {
+      const el = document.getElementById("filesStorage");
+      // bankr storage output looks like:
+      //   Storage:  0 B / 1024.0 MB (0.0%)
+      //   Files:  0
+      //   CLI cache:  0 B / 1024.0 MB (0.0%)
+      const sm = text.match(/Storage:\s*([\d\.]+\s*\w+)\s*\/\s*([\d\.]+\s*\w+)\s*\(([\d\.]+)%\)/);
+      const fm = text.match(/Files:\s*(\d+)/);
+      if (!sm) { el.textContent = text.split("\n")[0] || "Storage: ?"; return; }
+      const [, used, total, pct] = sm;
+      el.innerHTML = `${escHtml(used)} / ${escHtml(total)} · ${fm ? escHtml(fm[1]) + " files" : ""}
+        <div class="bar"><div style="width:${escHtml(pct)}%"></div></div>`;
+    }
+
+    function renderFilesTree(text, basePath) {
+      // bankr files ls outputs a plain listing — we render rows from it.
+      // Each line is roughly: "<icon> <name> <size?>" or just a header.
+      const el = document.getElementById("filesTree");
+      const lines = String(text || "").split("\n");
+      // Heuristic: rows starting with /, ., or having a size like "123 B"
+      // Parse what bankr actually emits. For an empty store the output is
+      // "(empty)" or similar. We'll show the raw text + try to extract rows.
+      const rows = [];
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (/^[A-Z][a-z]+:/.test(trimmed)) continue; // skip headers like "Storage:"
+        // Match lines like "  📁 .memory/" or "  📄 readme.md  123 B"
+        const m = trimmed.match(/^[\W_]*([\.\/A-Za-z0-9_\-][\.\/A-Za-z0-9_\- ]*?)(?:\s+([\d\.]+\s*[KMGB]?B?))?\s*$/);
+        if (m) {
+          const name = m[1];
+          const size = m[2] || "";
+          const isDir = /\/$/.test(name) || /^[\.\/]/.test(name) === false && !/\.[a-z]+$/.test(name);
+          const isMemory = /\/?\.memory/.test(name);
+          rows.push({ name, size, isDir, isMemory });
+        }
+      }
+      if (rows.length === 0) {
+        // Fallback: render the raw output as preformatted text so the user
+        // can still see what bankr returned.
+        el.innerHTML = `<pre>${escHtml(text)}</pre>`;
+        return;
+      }
+      // Add ".." up-row when not at root
+      const parentRow = basePath !== "/" && basePath !== ""
+        ? `<div class="row" onclick="filesNavigate('${escHtml(basePath.replace(/[^/]+\/?$/, "") || "/")}')">
+            <span class="icon">↑</span><span class="name">..</span></div>`
+        : "";
+      el.innerHTML = parentRow + rows.map((r) => `
+        <div class="row${r.isMemory ? " memory" : ""}${filesSelectedPath === joinFilesPath(basePath, r.name) ? " selected" : ""}"
+             onclick="filesSelect('${escHtml(joinFilesPath(basePath, r.name))}', ${r.isDir})">
+          <span class="icon">${r.isDir ? "▸" : "·"}</span>
+          <span class="name">${escHtml(r.name.replace(/\/$/, ""))}</span>
+          <span class="size">${escHtml(r.size)}</span>
+        </div>
+      `).join("");
+    }
+
+    function joinFilesPath(base, name) {
+      const cleanBase = (base || "/").replace(/\/+$/, "");
+      const cleanName = name.replace(/^\/+/, "");
+      return cleanBase + "/" + cleanName;
+    }
+
+    function filesNavigate(path) {
+      filesCurrentPath = path;
+      filesSelectedPath = null;
+      filesRefresh();
+    }
+
+    async function filesSelect(path, isDir) {
+      if (isDir) {
+        filesNavigate(path);
+        return;
+      }
+      filesSelectedPath = path;
+      document.querySelectorAll(".files-tree .row").forEach((r) =>
+        r.classList.toggle("selected", r.querySelector(".name")?.textContent === path.split("/").pop()));
+      // Load file contents
+      const ed = document.getElementById("filesEditor");
+      ed.innerHTML = `<div class="head">
+        <span class="path">${escHtml(path)}</span>
+        <button onclick="filesEdit()">Edit</button>
+        <button onclick="filesDelete('${escHtml(path)}')">Delete</button>
+      </div>
+      <div class="body"><pre id="filesContent">Loading…</pre></div>`;
+      try {
+        const r = await fetch("/api/files/cat?path=" + encodeURIComponent(path));
+        const j = await r.json();
+        document.getElementById("filesContent").textContent = j.output || "(empty)";
+      } catch (e) {
+        document.getElementById("filesContent").textContent = "Error: " + e.message;
+      }
+    }
+
+    function filesEdit() {
+      const path = filesSelectedPath;
+      if (!path) return;
+      const current = document.getElementById("filesContent")?.textContent || "";
+      const ed = document.getElementById("filesEditor");
+      filesIsEditing = true;
+      ed.innerHTML = `<div class="head">
+        <span class="path">${escHtml(path)} <span style="color:var(--orange)">· editing</span></span>
+        <button class="primary" onclick="filesSave()">Save</button>
+        <button onclick="filesCancelEdit()">Cancel</button>
+      </div>
+      <div class="body"><textarea id="filesEditArea" spellcheck="false">${escHtml(current)}</textarea></div>`;
+      setTimeout(() => document.getElementById("filesEditArea")?.focus(), 50);
+    }
+
+    async function filesSave() {
+      const path = filesSelectedPath;
+      const body = document.getElementById("filesEditArea")?.value || "";
+      if (!path) return;
+      // files write goes through the danger gate in /api/bankr.
+      // Construct the command using JSON-quoted args so spaces survive.
+      const cmd = `files write ${JSON.stringify(path)} ${JSON.stringify(body)}`;
+      try {
+        const r = await fetch("/api/bankr", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: cmd }),
+        });
+        const j = await r.json();
+        if (j.confirmRequired) {
+          showPanel("chatPanel");
+          renderMessages([{ role: "assistant", content: "File save staged — confirm below to write.",
+                            pending: { id: j.pendingId, command: j.command, summary: j.summary } }]);
+        } else if (j.ok) {
+          alert("Saved.");
+          filesIsEditing = false;
+          filesSelect(path, false);
+        } else {
+          alert("Save failed: " + (j.output || "(no output)"));
+        }
+      } catch (e) {
+        alert("Error: " + e.message);
+      }
+    }
+
+    function filesCancelEdit() {
+      filesIsEditing = false;
+      if (filesSelectedPath) filesSelect(filesSelectedPath, false);
+    }
+
+    async function filesDelete(path) {
+      if (!confirm("Delete " + path + "?")) return;
+      const cmd = `files rm ${JSON.stringify(path)}`;
+      try {
+        const r = await fetch("/api/bankr", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: cmd }),
+        });
+        const j = await r.json();
+        if (j.confirmRequired) {
+          showPanel("chatPanel");
+          renderMessages([{ role: "assistant", content: "Delete staged — confirm below.",
+                            pending: { id: j.pendingId, command: j.command, summary: j.summary } }]);
+        } else if (j.ok) {
+          filesRefresh();
+        }
+      } catch (e) { alert("Error: " + e.message); }
+    }
+
+    function filesNewFile() {
+      const name = prompt("New file path (e.g. /skills/my.md):");
+      if (!name) return;
+      filesSelectedPath = name;
+      filesIsEditing = true;
+      const ed = document.getElementById("filesEditor");
+      ed.innerHTML = `<div class="head">
+        <span class="path">${escHtml(name)} <span style="color:var(--green)">· new</span></span>
+        <button class="primary" onclick="filesSave()">Save</button>
+        <button onclick="filesCancelEdit()">Cancel</button>
+      </div>
+      <div class="body"><textarea id="filesEditArea" spellcheck="false" placeholder="File contents…"></textarea></div>`;
+      setTimeout(() => document.getElementById("filesEditArea")?.focus(), 50);
+    }
+
+    function filesNewFolder() {
+      const name = prompt("New folder path (e.g. /skills/sub):");
+      if (!name) return;
+      const cmd = `files mkdir ${JSON.stringify(name)}`;
+      fetch("/api/bankr", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: cmd }) })
+        .then((r) => r.json()).then((j) => {
+          if (j.confirmRequired) {
+            showPanel("chatPanel");
+            renderMessages([{ role: "assistant", content: "Folder create staged — confirm below.",
+                              pending: { id: j.pendingId, command: j.command, summary: j.summary } }]);
+          } else { filesRefresh(); }
+        });
+    }
+
+    function filesUpload() {
+      // Multipart upload would require backend work (not in phase 7 yet).
+      // For now, surface a "use the wizard via chat" path.
+      alert("Upload UI lands in a follow-up. For now: paste content via 'New File' or use Chat: 'upload <local path> to <bankr path>'.");
+    }
+
+    async function filesDoSearch() {
+      const q = document.getElementById("filesSearch").value.trim();
+      if (!q) return;
+      try {
+        const r = await fetch("/api/files/search?q=" + encodeURIComponent(q));
+        const j = await r.json();
+        document.getElementById("filesTree").innerHTML =
+          `<pre>${escHtml(j.output || "(no results)")}</pre>`;
+      } catch (e) {
+        alert("Search error: " + e.message);
+      }
     }
 
     init();
