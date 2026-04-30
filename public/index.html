@@ -80,6 +80,36 @@
       color: var(--red);
     }
     .nav button.kill:hover { background: rgba(255,90,122,0.15); color: var(--red); }
+    .nav-sep {
+      height: 1px; background: var(--border); margin: 6px 4px;
+    }
+    .nav-link {
+      text-align: left; padding: 8px 12px; color: var(--text-dim);
+      text-decoration: none; font-size: 13px; border-radius: 6px;
+      display: block;
+    }
+    .nav-link:hover { background: var(--surface2); color: var(--text); }
+
+    /* Stub panel — used by Phase-1 placeholders before pages land */
+    .stub {
+      padding: 40px 32px; max-width: 640px; margin: 0 auto;
+    }
+    .stub h2 { font-size: 22px; margin-bottom: 8px; color: var(--text); }
+    .stub .lede { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; }
+    .stub h3 { font-size: 13px; color: var(--accent-light); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .stub ul { list-style: none; padding: 0; }
+    .stub li {
+      padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; margin-bottom: 6px; font-size: 13px; color: var(--text-dim);
+    }
+    .stub li strong { color: var(--text); }
+    .stub .pill {
+      display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px;
+      background: var(--surface2); color: var(--text-dim); margin-left: 8px;
+      vertical-align: middle; letter-spacing: 0.5px;
+    }
+    .stub .pill.free { color: var(--green); border: 1px solid rgba(0,214,143,0.3); }
+    .stub .pill.paid { color: var(--orange); border: 1px solid rgba(255,157,74,0.3); }
 
     .threads {
       flex: 1; overflow-y: auto; padding: 6px 8px;
@@ -390,11 +420,19 @@
     </div>
     <div class="nav">
       <button data-panel="chatPanel" class="active" onclick="showPanel('chatPanel')">Chat</button>
-      <button data-panel="autoPanel" onclick="showPanel('autoPanel')">Auto Mode <span class="badge" id="autoBadge" style="display:none">ON</span></button>
+      <button data-panel="walletPanel" onclick="showPanel('walletPanel')">Wallet</button>
+      <button data-panel="activityPanel" onclick="showPanel('activityPanel')">Activity</button>
+      <button data-panel="ordersPanel" onclick="showPanel('ordersPanel')">Orders</button>
+      <button data-panel="autoPanel" onclick="showPanel('autoPanel')">Automation <span class="badge" id="autoBadge" style="display:none">ON</span></button>
+      <button data-panel="positionsPanel" onclick="showPanel('positionsPanel')">Positions</button>
+      <button data-panel="launchesPanel" onclick="showPanel('launchesPanel')">Launches</button>
+      <button data-panel="filesPanel" onclick="showPanel('filesPanel')">Files</button>
+      <div class="nav-sep"></div>
       <button data-panel="rawPanel" onclick="showPanel('rawPanel')">Raw CLI</button>
       <button data-panel="skillsPanel" onclick="showPanel('skillsPanel')">Skills</button>
       <button data-panel="memoryPanel" onclick="showPanel('memoryPanel')">Memory</button>
-      <button data-panel="settingsPanel" onclick="showPanel('settingsPanel')">Settings</button>
+      <button data-panel="settingsPanel" onclick="showPanel('settingsPanel')">Advanced</button>
+      <a class="nav-link" href="https://docs.bankr.bot" target="_blank" rel="noopener">Docs ↗</a>
       <button onclick="newThread()" style="color: var(--accent-light); margin-top: 6px;">+ New Chat</button>
     </div>
     <div class="threads">
@@ -481,6 +519,98 @@
             <button class="btn" onclick="refreshAutomode()">Refresh</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Wallet Panel (stub — Phase 4 wires this to /api/wallet/portfolio) -->
+    <div class="panel" id="walletPanel">
+      <div class="stub">
+        <h2>Wallet</h2>
+        <p class="lede">Address, balances across chains, NFTs, and transaction history. Send / Receive / Wrap / Unwrap from one place.</p>
+        <h3>Lands in Phase 4</h3>
+        <ul>
+          <li><strong>Tokens tab</strong> <span class="pill free">free</span> — every holding from <code>wallet portfolio --all --json</code> with USD value, %change, per-row Send button</li>
+          <li><strong>NFTs tab</strong> <span class="pill free">free</span> — image grid with floor prices when available</li>
+          <li><strong>History tab</strong> <span class="pill free">free</span> — recent on-chain activity from the live portfolio snapshot</li>
+          <li><strong>Action bar</strong> — Send · Receive (QR) · Wrap (WETH recipe) · Unwrap (WETH recipe)</li>
+        </ul>
+        <p class="lede" style="margin-top:18px">For now: use <a href="#" onclick="showPanel('chatPanel');return false" style="color:var(--accent-light)">Chat</a> ("show my portfolio") or <a href="#" onclick="showPanel('rawPanel');return false" style="color:var(--accent-light)">Raw CLI</a> (<code>wallet portfolio --all</code>).</p>
+      </div>
+    </div>
+
+    <!-- Activity Panel (stub — Phase 5) -->
+    <div class="panel" id="activityPanel">
+      <div class="stub">
+        <h2>Activity</h2>
+        <p class="lede">A unified feed of every action — auto-mode runs, manual writes, chat-routed commands. Filterable, searchable, click for full output.</p>
+        <h3>Lands in Phase 5</h3>
+        <ul>
+          <li><strong>Sources</strong> — <code>data/automode-log.jsonl</code> (existing) + chat actions + manual Raw CLI history</li>
+          <li><strong>Filter pills</strong> — All · Writes · Reads · Auto · Errors</li>
+          <li><strong>Detail pane</strong> — click any row for full command + raw output</li>
+        </ul>
+        <p class="lede" style="margin-top:18px">For now: see the activity log inside <a href="#" onclick="showPanel('autoPanel');return false" style="color:var(--accent-light)">Automation</a>.</p>
+      </div>
+    </div>
+
+    <!-- Orders Panel (stub — Phase 6) -->
+    <div class="panel" id="ordersPanel">
+      <div class="stub">
+        <h2>Orders</h2>
+        <p class="lede">Limit · Stop · DCA · TWAP · Vesting Sell — bankr's seven automation primitives. Catalog only here: execution requires bankr's paid agent. Free scheduled actions live in Automation.</p>
+        <h3>Lands in Phase 6</h3>
+        <ul>
+          <li><strong>7 cards</strong> <span class="pill paid">paid agent</span> — Limit · Stop · DCA · TWAP · Vesting Sell · Agent Command · Solana Triggered Order</li>
+          <li><strong>Compose Prompt</strong> — copies an example prompt to clipboard, opens bankr.bot/terminal in a new tab if you want to pay credits there</li>
+          <li>Pulled from <code>agent skills</code> output (cached, free)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Positions Panel (stub — Phase 6) -->
+    <div class="panel" id="positionsPanel">
+      <div class="stub">
+        <h2>Positions</h2>
+        <p class="lede">Polymarket · Hyperliquid · Avantis. Trading is paid-agent territory. On-chain LP / staking shows from your portfolio for free.</p>
+        <h3>Lands in Phase 6</h3>
+        <ul>
+          <li><strong>Polymarket tab</strong> <span class="pill paid">paid agent</span></li>
+          <li><strong>Hyperliquid tab</strong> <span class="pill paid">paid agent</span></li>
+          <li><strong>Avantis tab</strong> <span class="pill paid">paid agent</span> (Base perps)</li>
+          <li><strong>On-chain holdings</strong> <span class="pill free">free</span> — derived from <code>wallet portfolio --all</code> when LP/staking entries exist</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Launches Panel (stub — Phase 6) -->
+    <div class="panel" id="launchesPanel">
+      <div class="stub">
+        <h2>Launches</h2>
+        <p class="lede">Token launch wizard plus tracking + claimable fees for everything you've shipped.</p>
+        <h3>Lands in Phase 6</h3>
+        <ul>
+          <li><strong>Launch wizard</strong> <span class="pill free">free</span> — name, symbol, image, tweet, website, fee%, fee-type → confirm-staged <code>launch</code> command</li>
+          <li><strong>Your launches</strong> <span class="pill free">free</span> — pulled from <code>data/launched-tokens.json</code> (Ghost Protocol convention) with claimable fees, contract address, basescan link</li>
+          <li><strong>Claim All</strong> — batched <code>fees claim &lt;addr&gt;</code> calls, each individually gated</li>
+        </ul>
+        <p class="lede" style="margin-top:18px">For now: <a href="#" onclick="quickSend('Launch a token with a creative name');return false" style="color:var(--accent-light)">ask Chat to launch</a> — same confirm flow.</p>
+      </div>
+    </div>
+
+    <!-- Files Panel (stub — Phase 7) -->
+    <div class="panel" id="filesPanel">
+      <div class="stub">
+        <h2>Files</h2>
+        <p class="lede">Bankr's agent filesystem — store skills, configs, MEMORY.md, references. Two-pane explorer with editor.</p>
+        <h3>Lands in Phase 7</h3>
+        <ul>
+          <li><strong>Tree</strong> <span class="pill free">free</span> — recursive listing from <code>files ls</code></li>
+          <li><strong>Preview / Editor</strong> — Prism syntax highlight, edit mode swaps to <code>&lt;textarea&gt;</code>, Save calls <code>files write</code> (gated)</li>
+          <li><strong>Toolbar</strong> — New File · New Folder · Upload · Download · Rename · Delete (all gated through Phase 3 confirm flow)</li>
+          <li><strong>Storage bar</strong> — from <code>files storage</code></li>
+          <li><strong>Search</strong> — <code>files search &lt;query&gt;</code></li>
+          <li><strong>/.memory/</strong> read-only badge — per <a href="https://docs.bankr.bot/agent/memory" target="_blank" style="color:var(--accent-light)">docs.bankr.bot/agent/memory</a></li>
+        </ul>
       </div>
     </div>
 
@@ -581,6 +711,8 @@
 
     // =================== INIT ===================
     async function init() {
+      // Honor URL hash on first paint so deep links work
+      routeFromHash();
       await refreshStatus();
       await loadThreadList();
       await refreshAutomode();
@@ -609,19 +741,49 @@
     }
 
     // =================== PANEL SWITCH ===================
+    // panelId <-> hash routing. Source of truth is the URL hash so the back
+    // button works and links are shareable.
+    const PANEL_TO_HASH = {
+      chatPanel: "chat", walletPanel: "wallet", activityPanel: "activity",
+      ordersPanel: "orders", autoPanel: "automation", positionsPanel: "positions",
+      launchesPanel: "launches", filesPanel: "files", rawPanel: "raw",
+      skillsPanel: "skills", memoryPanel: "memory", settingsPanel: "advanced",
+    };
+    const HASH_TO_PANEL = Object.fromEntries(
+      Object.entries(PANEL_TO_HASH).map(([p, h]) => [h, p])
+    );
+    const PANEL_TITLES = {
+      chatPanel: "Chat", walletPanel: "Wallet", activityPanel: "Activity",
+      ordersPanel: "Orders", autoPanel: "Automation", positionsPanel: "Positions",
+      launchesPanel: "Launches", filesPanel: "Files", rawPanel: "Raw CLI",
+      skillsPanel: "Skills", memoryPanel: "Memory", settingsPanel: "Advanced",
+    };
+
     function showPanel(id) {
       document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-      document.getElementById(id).classList.add("active");
+      const target = document.getElementById(id);
+      if (!target) return;
+      target.classList.add("active");
       document.querySelectorAll(".nav button[data-panel]").forEach((b) => {
         b.classList.toggle("active", b.dataset.panel === id);
       });
-      const titles = { chatPanel: "Chat", autoPanel: "Auto Mode", rawPanel: "Raw CLI",
-                       skillsPanel: "Skills", memoryPanel: "Memory", settingsPanel: "Settings" };
-      document.getElementById("panelTitle").textContent = titles[id] || "";
+      document.getElementById("panelTitle").textContent = PANEL_TITLES[id] || "";
       if (id === "memoryPanel") renderMemory();
       if (id === "skillsPanel") renderSkillList();
       if (id === "settingsPanel") loadSettings();
+      // Reflect to URL hash if we got here from a click rather than hashchange
+      const hash = PANEL_TO_HASH[id];
+      if (hash && location.hash !== "#/" + hash) {
+        history.replaceState(null, "", "#/" + hash);
+      }
     }
+
+    function routeFromHash() {
+      const m = (location.hash || "").match(/^#\/?([a-z]+)/);
+      const panelId = m ? HASH_TO_PANEL[m[1]] : null;
+      showPanel(panelId || "chatPanel");
+    }
+    window.addEventListener("hashchange", routeFromHash);
 
     // =================== THREADS ===================
     async function loadThreadList() {
