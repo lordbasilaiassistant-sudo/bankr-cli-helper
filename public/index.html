@@ -231,6 +231,79 @@
     }
     .empty-state .icon { font-size: 32px; margin-bottom: 10px; opacity: 0.4; }
 
+    /* === Activity page (Phase 5) === */
+    .activity-page {
+      display: grid; grid-template-columns: minmax(320px, 1fr) minmax(0, 1.2fr);
+      gap: 16px; padding: 24px 32px; max-width: 1280px; margin: 0 auto;
+      height: calc(100vh - 60px); /* topbar height */
+    }
+    .activity-page .col { display: flex; flex-direction: column; min-height: 0; }
+    .filter-pills {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
+    }
+    .filter-pills button {
+      padding: 5px 12px; background: var(--surface); color: var(--text-dim);
+      border: 1px solid var(--border); border-radius: 12px; font-size: 12px;
+      cursor: pointer;
+    }
+    .filter-pills button.active {
+      background: var(--accent-dim); color: white; border-color: var(--accent);
+    }
+    .activity-list {
+      flex: 1; overflow-y: auto; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px; padding: 4px;
+    }
+    .activity-row {
+      display: grid; grid-template-columns: 70px 1fr auto;
+      gap: 10px; padding: 8px 12px; border-radius: 6px; cursor: pointer;
+      align-items: center; font-size: 12px;
+    }
+    .activity-row:hover { background: var(--surface2); }
+    .activity-row.selected { background: rgba(108,92,231,0.15); border: 1px solid var(--accent); }
+    .activity-row .ts { color: var(--text-dim); font-family: 'SF Mono', monospace; font-size: 10px; }
+    .activity-row .label { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .activity-row .status {
+      font-size: 10px; padding: 2px 8px; border-radius: 8px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .activity-row .status.ok { background: rgba(0,214,143,0.15); color: var(--green); }
+    .activity-row .status.err { background: rgba(255,90,122,0.15); color: var(--red); }
+    .activity-row .status.skip { background: var(--surface3); color: var(--text-dim); }
+    .activity-row .kind {
+      font-size: 9px; padding: 1px 5px; border-radius: 4px;
+      background: var(--surface2); color: var(--text-dim); margin-right: 6px;
+      letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .activity-row .kind.auto { color: var(--accent-light); }
+    .activity-row .kind.chat { color: var(--green); }
+    .activity-row .kind.manual { color: var(--yellow); }
+    .activity-detail {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 18px; overflow-y: auto;
+    }
+    .activity-detail h3 {
+      font-size: 14px; margin-bottom: 12px; color: var(--text);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .activity-detail .field {
+      display: grid; grid-template-columns: 100px 1fr; gap: 12px;
+      padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px;
+    }
+    .activity-detail .field:last-child { border-bottom: none; }
+    .activity-detail .field .key {
+      color: var(--text-dim); text-transform: uppercase;
+      letter-spacing: 1px; font-size: 10px; padding-top: 2px;
+    }
+    .activity-detail .field .val {
+      color: var(--text); font-family: 'SF Mono', monospace;
+      word-break: break-all; white-space: pre-wrap;
+    }
+    .activity-empty {
+      display: flex; align-items: center; justify-content: center;
+      flex: 1; color: var(--text-dim); font-size: 13px; text-align: center;
+      padding: 40px 20px;
+    }
+
     /* Stub panel — used by Phase-1 placeholders before pages land */
     .stub {
       padding: 40px 32px; max-width: 640px; margin: 0 auto;
@@ -623,11 +696,11 @@
       </div>
     </div>
 
-    <!-- Auto Mode Panel -->
+    <!-- Automation Panel (was Auto Mode — renamed in Phase 5 to align with bankr vocab) -->
     <div class="panel" id="autoPanel">
       <div class="panel-inner">
-        <h2>Auto Mode</h2>
-        <p class="muted">The assistant manages your wallet on a schedule: claims fees, launches tokens, snapshots your portfolio. Every action is logged. Kill switch stops everything instantly.</p>
+        <h2>Automation</h2>
+        <p class="muted">The assistant manages your wallet on a schedule: claims fees, launches tokens, snapshots your portfolio. Every action is logged to <a href="#" onclick="showPanel('activityPanel');return false" style="color:var(--accent-light)">Activity</a>. Kill switch stops everything instantly.</p>
 
         <div class="card">
           <div class="grid3" id="autoStats">
@@ -703,18 +776,32 @@
       </div>
     </div>
 
-    <!-- Activity Panel (stub — Phase 5) -->
+    <!-- Activity Panel (Phase 5) -->
     <div class="panel" id="activityPanel">
-      <div class="stub">
-        <h2>Activity</h2>
-        <p class="lede">A unified feed of every action — auto-mode runs, manual writes, chat-routed commands. Filterable, searchable, click for full output.</p>
-        <h3>Lands in Phase 5</h3>
-        <ul>
-          <li><strong>Sources</strong> — <code>data/automode-log.jsonl</code> (existing) + chat actions + manual Raw CLI history</li>
-          <li><strong>Filter pills</strong> — All · Writes · Reads · Auto · Errors</li>
-          <li><strong>Detail pane</strong> — click any row for full command + raw output</li>
-        </ul>
-        <p class="lede" style="margin-top:18px">For now: see the activity log inside <a href="#" onclick="showPanel('autoPanel');return false" style="color:var(--accent-light)">Automation</a>.</p>
+      <div class="activity-page">
+        <div class="col">
+          <div class="filter-pills" id="activityFilters">
+            <button class="active" data-filter="all" onclick="setActivityFilter('all')">All</button>
+            <button data-filter="writes" onclick="setActivityFilter('writes')">Writes</button>
+            <button data-filter="reads" onclick="setActivityFilter('reads')">Reads</button>
+            <button data-filter="auto" onclick="setActivityFilter('auto')">Auto</button>
+            <button data-filter="errors" onclick="setActivityFilter('errors')">Errors</button>
+            <button onclick="refreshActivity(true)" style="margin-left:auto">↻</button>
+          </div>
+          <div class="activity-list" id="activityList">
+            <div class="activity-empty">Loading activity…</div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="activity-detail" id="activityDetail" style="height:100%">
+            <div class="activity-empty">
+              <div>
+                <div style="font-size:32px;opacity:0.3;margin-bottom:8px">·</div>
+                Select an activity to view details
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -937,6 +1024,7 @@
       if (id === "skillsPanel") renderSkillList();
       if (id === "settingsPanel") loadSettings();
       if (id === "walletPanel") refreshWallet();
+      if (id === "activityPanel") refreshActivity();
       // Reflect to URL hash if we got here from a click rather than hashchange
       const hash = PANEL_TO_HASH[id];
       if (hash && location.hash !== "#/" + hash) {
@@ -1972,6 +2060,142 @@
         <text x="50" y="48" text-anchor="middle" font-family="monospace" font-size="6" fill="#333">QR coming</text>
         <text x="50" y="58" text-anchor="middle" font-family="monospace" font-size="4" fill="#666">copy address below</text>
       </svg>`;
+    }
+
+    // =================== ACTIVITY PAGE (Phase 5) ===================
+    let activityEntries = [];
+    let activityFilter = localStorage.getItem("activityFilter") || "all";
+    let activitySelected = null;
+
+    async function refreshActivity(force = false) {
+      const list = document.getElementById("activityList");
+      // Reflect persisted filter into UI on first paint
+      document.querySelectorAll('#activityFilters button[data-filter]').forEach((b) => {
+        b.classList.toggle("active", b.dataset.filter === activityFilter);
+      });
+      if (!force && activityEntries.length > 0) {
+        renderActivity();
+        return;
+      }
+      try {
+        // /api/automode/log returns reverse-chronological JSONL entries.
+        // Take 200 for a reasonable scrollable window.
+        const r = await fetch("/api/automode/log?n=200");
+        const log = await r.json();
+        // Each entry already has { ts, action, ok, error?, output?, ... }.
+        // Tag with the source. automode-log entries are the auto kind.
+        activityEntries = (Array.isArray(log) ? log : []).map((e) => ({
+          ...e,
+          kind: e.kind || "auto", // backfill until automode.js emits kind
+        }));
+        renderActivity();
+      } catch (e) {
+        list.innerHTML = `<div class="activity-empty">Failed to load: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    function setActivityFilter(f) {
+      activityFilter = f;
+      localStorage.setItem("activityFilter", f);
+      document.querySelectorAll('#activityFilters button[data-filter]').forEach((b) => {
+        b.classList.toggle("active", b.dataset.filter === f);
+      });
+      renderActivity();
+    }
+
+    function activityMatchesFilter(e) {
+      if (activityFilter === "all") return true;
+      if (activityFilter === "errors") return e.error || e.ok === false;
+      if (activityFilter === "auto") return e.kind === "auto";
+      if (activityFilter === "writes") {
+        // claim* / launch / submit / transfer / sign / wrap / unwrap = write
+        const a = (e.action || "").toLowerCase();
+        return /claim|launch|submit|transfer|sign|wrap|unwrap|signup/.test(a);
+      }
+      if (activityFilter === "reads") {
+        const a = (e.action || "").toLowerCase();
+        return !/claim|launch|submit|transfer|sign|wrap|unwrap|signup/.test(a);
+      }
+      return true;
+    }
+
+    function renderActivity() {
+      const list = document.getElementById("activityList");
+      const filtered = activityEntries.filter(activityMatchesFilter);
+      if (filtered.length === 0) {
+        list.innerHTML = `<div class="activity-empty">
+          ${activityEntries.length === 0
+            ? "No activity yet. Auto-mode runs and chat-routed writes will appear here."
+            : "No entries match this filter."}
+        </div>`;
+        return;
+      }
+      list.innerHTML = filtered.map((e, i) => {
+        const ts = e.ts ? formatActivityTs(e.ts) : "";
+        const action = e.action || e.command || "(unknown)";
+        const status = e.error || e.ok === false
+          ? '<span class="status err">err</span>'
+          : e.skipped
+            ? '<span class="status skip">skip</span>'
+            : '<span class="status ok">ok</span>';
+        const kind = `<span class="kind ${e.kind || "auto"}">${e.kind || "auto"}</span>`;
+        return `<div class="activity-row${activitySelected === i ? " selected" : ""}"
+                     data-idx="${i}" onclick="selectActivity(${i})">
+          <span class="ts">${escHtml(ts)}</span>
+          <span class="label">${kind}${escHtml(action)}</span>
+          ${status}
+        </div>`;
+      }).join("");
+    }
+
+    function formatActivityTs(ts) {
+      try {
+        const d = new Date(ts);
+        const now = new Date();
+        const sameDay = d.toDateString() === now.toDateString();
+        if (sameDay) {
+          return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+        }
+        return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      } catch (_) {
+        return String(ts).slice(0, 16);
+      }
+    }
+
+    function selectActivity(idx) {
+      const filtered = activityEntries.filter(activityMatchesFilter);
+      const e = filtered[idx];
+      if (!e) return;
+      activitySelected = idx;
+      // Re-render the list to show selection state
+      renderActivity();
+      const detail = document.getElementById("activityDetail");
+      const fields = [];
+      const addField = (k, v) => {
+        if (v === undefined || v === null || v === "") return;
+        fields.push(`<div class="field"><div class="key">${escHtml(k)}</div><div class="val">${escHtml(typeof v === "object" ? JSON.stringify(v, null, 2) : String(v))}</div></div>`);
+      };
+      addField("when", e.ts);
+      addField("kind", e.kind);
+      addField("action", e.action);
+      addField("status", e.error ? "error" : e.skipped ? "skipped" : e.ok === false ? "failed" : "ok");
+      if (e.command) addField("command", e.command);
+      if (e.token) addField("token", e.token);
+      if (e.claimable !== undefined) addField("claimable", e.claimable);
+      if (e.amount !== undefined) addField("amount", e.amount);
+      if (e.reason) addField("reason", e.reason);
+      if (e.error) addField("error", e.error);
+      if (e.output) addField("output", e.output);
+      // Surface any other keys we didn't already handle
+      const known = new Set(["ts", "kind", "action", "ok", "skipped", "command", "token", "claimable", "amount", "reason", "error", "output"]);
+      for (const [k, v] of Object.entries(e)) {
+        if (!known.has(k)) addField(k, v);
+      }
+      const titleStatus = e.error || e.ok === false
+        ? '<span class="status err">error</span>'
+        : e.skipped ? '<span class="status skip">skipped</span>'
+        : '<span class="status ok">ok</span>';
+      detail.innerHTML = `<h3>${escHtml(e.action || "(activity)")} ${titleStatus}</h3>${fields.join("")}`;
     }
 
     init();

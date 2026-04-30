@@ -113,8 +113,12 @@ function saveQueue(q) {
 }
 
 // --- Action log (append-only JSONL with size-based rotation) ---
+// `kind` is the source of the entry — "auto" by default since this logger
+// is owned by the automode engine. The Activity page (Phase 5) uses this
+// field to filter entries; future chat/manual writes should write through
+// here too with kind: "chat" / "manual" so they show up in the same feed.
 function log(entry) {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
+  const line = JSON.stringify({ ts: new Date().toISOString(), kind: "auto", ...entry });
   try {
     fs.appendFileSync(LOG_FILE, line + "\n");
     // Cheap rotation: every ~50 writes, check size. If exceeded, keep
