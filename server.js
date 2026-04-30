@@ -1552,6 +1552,65 @@ app.get("/api/x402/list", async (req, res) => {
   res.json({ ok: r.ok, output: r.output });
 });
 
+// Phase 15 — Launches page data source.
+// Combines two sources:
+//   1. data/launched-tokens.json — Ghost Protocol convention from CLAUDE.md.
+//      Append-only file the user (or future write hook) maintains.
+//   2. data/automode-log.jsonl — scans for kind:auto launchToken entries
+//      and parses the output for contract addresses.
+const LAUNCHED_TOKENS_FILE = path.join(DATA_DIR, "launched-tokens.json");
+function loadLaunchedTokens() {
+  if (!fs.existsSync(LAUNCHED_TOKENS_FILE)) return [];
+  try {
+    const raw = JSON.parse(fs.readFileSync(LAUNCHED_TOKENS_FILE, "utf8"));
+    return Array.isArray(raw) ? raw : [];
+  } catch (_) { return []; }
+}
+function scanAutomodeLogForLaunches() {
+  const LOG_FILE = path.join(DATA_DIR, "automode-log.jsonl");
+  if (!fs.existsSync(LOG_FILE)) return [];
+  try {
+    const lines = fs.readFileSync(LOG_FILE, "utf8").split("\n").filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      let entry;
+      try { entry = JSON.parse(line); } catch (_) { continue; }
+      if (entry.action !== "launchToken" && entry.action !== "launch") continue;
+      if (entry.error || entry.skipped) continue;
+      // Extract contract address from output if present
+      const addrMatch = (entry.output || "").match(/0x[0-9a-fA-F]{40}/);
+      out.push({
+        ts: entry.ts,
+        name: entry.name || entry.token || null,
+        symbol: entry.symbol || null,
+        address: addrMatch ? addrMatch[0] : null,
+        platform: entry.platform || "bankr",
+        source: "automode-log",
+      });
+    }
+    return out;
+  } catch (_) { return []; }
+}
+
+app.get("/api/launches/list", (req, res) => {
+  const fileEntries = loadLaunchedTokens();
+  const logEntries = scanAutomodeLogForLaunches();
+  // De-dupe by address (file wins — it's the curated source)
+  const byAddr = new Map();
+  for (const e of fileEntries) if (e.address) byAddr.set(e.address.toLowerCase(), { ...e, source: "file" });
+  for (const e of logEntries) {
+    if (!e.address) continue;
+    const k = e.address.toLowerCase();
+    if (!byAddr.has(k)) byAddr.set(k, e);
+  }
+  // Also include log entries without an address (failed parses) so the user can see attempts
+  const noAddrAttempts = logEntries.filter((e) => !e.address);
+  const merged = Array.from(byAddr.values()).concat(noAddrAttempts);
+  // Newest first
+  merged.sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+  res.json({ ok: true, launches: merged, fileExists: fs.existsSync(LAUNCHED_TOKENS_FILE) });
+});
+
 // Chat endpoint — LLM-driven command routing (no regex)
 const chatLog = logger.child("chat");
 app.post("/api/chat", async (req, res) => {

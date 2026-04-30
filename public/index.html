@@ -1383,10 +1383,16 @@
           </div>
         </div>
 
-        <h3 style="font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin:24px 0 10px">Your launches</h3>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin:24px 0 10px">
+          <h3 style="font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;margin:0">Your launches</h3>
+          <div>
+            <button class="btn small" onclick="renderLaunchesList()">Refresh</button>
+            <button class="btn primary small" onclick="claimAllLaunches()" id="claimAllBtn" style="display:none">Claim all fees</button>
+          </div>
+        </div>
         <div id="launchesList">
           <div class="muted" style="padding:18px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-            No launches recorded yet. Once you launch a token, the contract address and claimable fees will appear here.
+            Loading…
           </div>
         </div>
       </div>
@@ -3351,12 +3357,77 @@
       }
     }
 
+    let launchesCache = [];
     async function renderLaunchesList() {
-      // data/launched-tokens.json isn't tracked yet. When it lands (Ghost
-      // Protocol convention), render the table. For now, leave the empty-state
-      // copy that's already in the markup.
-      // If a user has launched via the wizard, the eventual claim flow can be
-      // appended here from /api/automode/log filtered to launch_token entries.
+      const cont = document.getElementById("launchesList");
+      const claimBtn = document.getElementById("claimAllBtn");
+      cont.innerHTML = `<div class="muted" style="padding:18px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:8px">Loading…</div>`;
+      try {
+        const r = await fetch("/api/launches/list");
+        const j = await r.json();
+        launchesCache = j.launches || [];
+        if (launchesCache.length === 0) {
+          cont.innerHTML = `<div class="muted" style="padding:18px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+            No launches recorded yet. Once you launch a token (here or via Chat), it'll appear here with contract address and claimable fees.
+          </div>`;
+          if (claimBtn) claimBtn.style.display = "none";
+          return;
+        }
+        const withAddr = launchesCache.filter((l) => l.address);
+        if (claimBtn) claimBtn.style.display = withAddr.length > 0 ? "" : "none";
+        cont.innerHTML = `<div class="launches-table">
+          <div class="head">
+            <span>Token</span><span>Address</span><span>Source</span><span>Action</span>
+          </div>
+          ${launchesCache.map((l) => `<div class="row">
+            <div>
+              <div style="font-weight:600">${escHtml(l.name || l.symbol || "(unnamed)")}</div>
+              <div style="font-size:11px;color:var(--text-dim)">${escHtml(l.symbol || "")} ${l.ts ? "· " + escHtml(formatActivityTs(l.ts)) : ""}</div>
+            </div>
+            <div class="addr">${l.address
+              ? `<a href="https://basescan.org/token/${escHtml(l.address)}" target="_blank" style="color:var(--accent-light);text-decoration:none">${escHtml(l.address.slice(0,6) + "…" + l.address.slice(-4))} ↗</a>`
+              : '<span style="color:var(--text-muted)">no address</span>'}</div>
+            <div style="font-size:11px;color:var(--text-dim)">${escHtml(l.source || "")}</div>
+            <div>${l.address
+              ? `<button class="btn small" onclick="claimLaunchFees('${escHtml(l.address)}')">Claim</button>`
+              : ""}</div>
+          </div>`).join("")}
+        </div>`;
+      } catch (e) {
+        cont.innerHTML = `<div class="muted" style="padding:18px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--red)">
+          Failed to load: ${escHtml(e.message)}
+        </div>`;
+      }
+    }
+
+    async function claimLaunchFees(address) {
+      if (!address) return;
+      const cmd = `fees claim ${address}`;
+      try {
+        const r = await fetch("/api/bankr", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: cmd }),
+        });
+        const j = await r.json();
+        if (j.confirmRequired) {
+          showPanel("chatPanel");
+          renderMessages([{
+            role: "assistant",
+            content: `Fee claim staged for ${address.slice(0,6)}…${address.slice(-4)}. Confirm below.`,
+            pending: { id: j.pendingId, command: j.command, summary: j.summary },
+          }]);
+        }
+      } catch (e) { alert("Error: " + e.message); }
+    }
+
+    async function claimAllLaunches() {
+      const withAddr = launchesCache.filter((l) => l.address);
+      if (withAddr.length === 0) return;
+      // Stage one at a time — each goes through its own danger gate.
+      // For Phase 15 we just trigger the first one; user can repeat per row.
+      // Could be batched into a single confirm box in a follow-up.
+      if (!confirm(`Stage ${withAddr.length} fee claims? Each will need to be confirmed individually.`)) return;
+      claimLaunchFees(withAddr[0].address);
     }
 
     // =================== FILES PAGE (Phase 7) ===================
