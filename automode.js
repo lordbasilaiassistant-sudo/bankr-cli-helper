@@ -580,4 +580,9 @@ module.exports = {
   loadQueue,
   saveQueue,
   readLog,
+  // Phase 17 — exported so server.js can write manual/chat entries into the
+  // same JSONL stream automode owns. Kind defaults to "auto"; callers should
+  // pass kind:"manual" or kind:"chat" explicitly.
+  log,
+  LOG_FILE,
 };

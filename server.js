@@ -1337,8 +1337,39 @@ app.delete("/api/threads/:id", (req, res) => {
 });
 
 // Raw CLI passthrough — validated. Writes require explicit confirm=true.
+// Phase 17 — log manual / chat writes into the same JSONL automode owns.
+// Reuses automode.log so rotation and shape stay consistent. Truncates
+// output to 400 chars in the entry to keep log size bounded; the full
+// output already went back to the user in the HTTP response.
+function logManualAction(cmdStr, result, source = "manual") {
+  try {
+    // Root = first 1-2 positional tokens (skip flags). "fees --json" → "fees";
+    // "tokens search BNKR" → "tokens search"; "wallet portfolio --all" →
+    // "wallet portfolio". Keeps the Activity action label readable.
+    const tokens = String(cmdStr || "").trim().split(/\s+/);
+    const positionals = [];
+    for (const t of tokens) {
+      if (t.startsWith("-")) break;
+      positionals.push(t);
+      if (positionals.length === 2) break;
+    }
+    const root = positionals.join(" ") || tokens[0] || "?";
+    automode.log({
+      kind: source,
+      action: root,
+      command: cmdStr,
+      ok: !!result?.ok,
+      exitCode: typeof result?.exitCode === "number" ? result.exitCode : null,
+      outputPreview: String(result?.output || "").slice(0, 400),
+      error: result?.error || undefined,
+    });
+  } catch (e) {
+    log.warn("manual log failed", { err: e.message });
+  }
+}
+
 app.post("/api/bankr", async (req, res) => {
-  const { command, confirm } = req.body;
+  const { command, confirm, source } = req.body;
   if (!command || typeof command !== "string") {
     return res.status(400).json({ ok: false, output: "Missing command" });
   }
@@ -1361,15 +1392,25 @@ app.post("/api/bankr", async (req, res) => {
     });
   }
   const result = await runBankrWithRecipe(command, loadSettings());
+  // Log this read-run (or direct-run-without-stage) so manual reads appear
+  // in Activity. Skip logging on the obvious noise paths (whoami polling
+  // every 30s would flood the log) — but most reads are meaningful.
+  if (!/^whoami\b/.test(command)) {
+    logManualAction(command, result, source === "chat" ? "chat" : "manual");
+  }
   res.json(result);
 });
 
 // Confirm a previously-staged write command
 app.post("/api/bankr/confirm", async (req, res) => {
-  const { pendingId } = req.body;
+  const { pendingId, source } = req.body;
   const cmd = takePending(pendingId);
   if (!cmd) return res.status(404).json({ ok: false, output: "Pending command not found or expired" });
   const result = await runBankrWithRecipe(cmd, loadSettings());
+  // Phase 17 — every confirmed write lands in the activity log so the user
+  // can see them in the Activity page. kind defaults to "manual"; the
+  // frontend can pass {source: "chat"} for LLM-routed writes.
+  logManualAction(cmd, result, source === "chat" ? "chat" : "manual");
   res.json({ ...result, command: cmd });
 });
 

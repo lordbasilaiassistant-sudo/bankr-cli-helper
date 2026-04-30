@@ -1287,6 +1287,7 @@
             <button data-filter="writes" onclick="setActivityFilter('writes')">Writes</button>
             <button data-filter="reads" onclick="setActivityFilter('reads')">Reads</button>
             <button data-filter="auto" onclick="setActivityFilter('auto')">Auto</button>
+            <button data-filter="manual" onclick="setActivityFilter('manual')">Manual</button>
             <button data-filter="errors" onclick="setActivityFilter('errors')">Errors</button>
             <button onclick="refreshActivity(true)" style="margin-left:auto">↻</button>
           </div>
@@ -3070,6 +3071,9 @@
       if (activityFilter === "all") return true;
       if (activityFilter === "errors") return e.error || e.ok === false;
       if (activityFilter === "auto") return e.kind === "auto";
+      // "Manual" covers anything user-driven — both raw CLI hits and chat-routed
+      // writes (kind:"chat"). Phase 17 added these kinds to the log.
+      if (activityFilter === "manual") return e.kind && e.kind !== "auto";
       if (activityFilter === "writes") {
         // claim* / launch / submit / transfer / sign / wrap / unwrap = write
         const a = (e.action || "").toLowerCase();

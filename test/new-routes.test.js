@@ -208,3 +208,82 @@ test("POST /api/files/upload rejects oversized payloads", async (t) => {
   // Either body-parser rejects with 413, or our validator catches it
   assert.ok(r.status === 413 || r.status === 400, `expected 413/400, got ${r.status}`);
 });
+
+// === Phase 15 — launches list endpoint ===
+test("GET /api/launches/list returns ok-shape with launches array", async (t) => {
+  skipIfDead(t);
+  const r = await getJson("/api/launches/list");
+  assert.equal(r.status, 200);
+  assert.equal(r.json.ok, true);
+  assert.ok(Array.isArray(r.json.launches), "launches must be an array");
+  assert.equal(typeof r.json.fileExists, "boolean");
+});
+
+test("GET /api/launches/list — entries (if any) have stable shape", async (t) => {
+  skipIfDead(t);
+  const r = await getJson("/api/launches/list");
+  for (const l of r.json.launches) {
+    // Required shape — even log-derived entries get a ts and a source label
+    assert.ok(typeof l.source === "string", `entry missing source: ${JSON.stringify(l)}`);
+    if (l.address !== null && l.address !== undefined) {
+      assert.match(l.address, /^0x[0-9a-fA-F]{40}$/i,
+        `address must be 40-char hex: ${l.address}`);
+    }
+  }
+});
+
+// === Phase 17 — manual writes appear in the activity log ===
+test("POST /api/bankr (read) writes a manual entry to the activity log", async (t) => {
+  skipIfDead(t);
+  // Trigger a known-good read
+  const before = await (await fetch(`${BASE}/api/automode/log?n=20`)).json();
+  await postJson("/api/bankr", { command: "agent skills" });
+  // Give the synchronous append a tick
+  await new Promise(r => setTimeout(r, 250));
+  const after = await (await fetch(`${BASE}/api/automode/log?n=20`)).json();
+  // The most-recent entry should be a manual entry for "agent skills"
+  const newest = after[0];
+  assert.ok(newest, "expected at least one entry");
+  assert.equal(newest.kind, "manual",
+    `newest entry should be kind=manual after a manual /api/bankr call: ${JSON.stringify(newest)}`);
+  assert.match(newest.action, /^agent\s/, `action should start with agent: ${newest.action}`);
+  assert.ok(after.length >= before.length,
+    "log should grow after a manual call");
+});
+
+test("POST /api/bankr with source:'chat' tags the entry kind=chat", async (t) => {
+  skipIfDead(t);
+  await postJson("/api/bankr", { command: "tokens search BNKR", source: "chat" });
+  await new Promise(r => setTimeout(r, 250));
+  const log = await (await fetch(`${BASE}/api/automode/log?n=5`)).json();
+  const found = log.find(e => e.action === "tokens search" && e.kind === "chat");
+  assert.ok(found, `expected a kind=chat entry for "tokens search": ${JSON.stringify(log.slice(0, 3))}`);
+});
+
+test("manual log entry redacts to root + outputPreview only (no full command leak)", async (t) => {
+  skipIfDead(t);
+  // The action field should be the bankr root, not the full command. Flags
+  // (e.g. --json) should not leak into the action label — they're
+  // captured separately in `command`.
+  await postJson("/api/bankr", { command: "fees --json" });
+  await new Promise(r => setTimeout(r, 250));
+  const log = await (await fetch(`${BASE}/api/automode/log?n=5`)).json();
+  const found = log.find(e => e.command === "fees --json");
+  assert.ok(found, "log entry not found");
+  assert.equal(found.action, "fees", `action should be just "fees", got: ${found.action}`);
+  assert.equal(typeof found.outputPreview, "string");
+  assert.ok(found.outputPreview.length <= 400, "outputPreview should be capped");
+});
+
+test("/api/bankr does NOT log whoami (high-frequency polling noise filter)", async (t) => {
+  skipIfDead(t);
+  const before = await (await fetch(`${BASE}/api/automode/log?n=20`)).json();
+  await postJson("/api/bankr", { command: "whoami" });
+  await new Promise(r => setTimeout(r, 250));
+  const after = await (await fetch(`${BASE}/api/automode/log?n=20`)).json();
+  // Newest entry should NOT be a whoami
+  if (after[0]) {
+    assert.notEqual(after[0].action, "whoami",
+      `whoami should be excluded from manual log to avoid polling noise`);
+  }
+});
