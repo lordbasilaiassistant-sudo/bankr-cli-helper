@@ -5,63 +5,77 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bankr Helper</title>
   <style>
+    /* Default = LIGHT (Phase 11 — match bankr.bot/terminal). Dark is opt-in. */
     :root {
+      /* Sidebar gets a slight lavender tint — distinguishes from main bg */
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface2: #f6f4fb;
+      --surface3: #ede9f7;
+      --border: #e8e6f0;
+      --sidebar-bg: #faf9fd;
+      --sidebar-active-bg: #ede9fe;
+      --sidebar-active-text: #6c5ce7;
+      --text: #1a1a26;
+      --text-dim: #6b6b85;
+      --text-muted: #9999b0;
+      --accent: #6c5ce7;
+      --accent-dim: #4f3fc0;
+      --accent-light: #8a7af0;
+      --accent-bg: #ede9fe;
+      --green: #16a86f;
+      --red: #d54260;
+      --yellow: #c98e2e;
+      --orange: #c9722e;
+    }
+    html[data-theme="dark"] {
       --bg: #0a0a0f;
       --surface: #12121a;
       --surface2: #1a1a26;
       --surface3: #232333;
       --border: #2a2a3a;
+      --sidebar-bg: #0e0e15;
+      --sidebar-active-bg: #2a2240;
+      --sidebar-active-text: #b8aaf5;
       --text: #e6e6ee;
       --text-dim: #8b8ba5;
+      --text-muted: #5a5a72;
       --accent: #6c5ce7;
       --accent-dim: #4a3fb0;
       --accent-light: #8a7af0;
+      --accent-bg: #2a2240;
       --green: #00d68f;
       --red: #ff5a7a;
       --yellow: #ffc85a;
       --orange: #ff9d4a;
     }
-    /* Light theme — Phase 9. Phase 11 dials in the exact bankr.bot palette. */
-    html[data-theme="light"] {
-      --bg: #f8f7fc;
-      --surface: #ffffff;
-      --surface2: #f4f2f9;
-      --surface3: #eae6f3;
-      --border: #e3e0ec;
-      --text: #1a1a26;
-      --text-dim: #6a6a8a;
-      --accent: #6c5ce7;
-      --accent-dim: #4f3fc0;
-      --accent-light: #8a7af0;
-      --green: #00a86f;
-      --red: #d54260;
-      --yellow: #d99c30;
-      --orange: #d97a30;
-    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     body {
-      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
       display: flex;
       overflow: hidden;
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
     button { font-family: inherit; }
     input, select, textarea { font-family: inherit; color: var(--text); }
+    code, pre, .mono { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
 
-    /* --- Sidebar --- */
+    /* --- Sidebar (Phase 11 — bankr light aesthetic) --- */
     .sidebar {
-      width: 260px;
-      background: var(--surface);
+      width: 240px;
+      background: var(--sidebar-bg);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
     }
     .sb-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border);
+      padding: 14px 16px 12px;
       display: flex;
       align-items: center;
       gap: 10px;
@@ -70,24 +84,38 @@
       width: 28px; height: 28px; background: var(--accent); border-radius: 6px;
       display: flex; align-items: center; justify-content: center;
       font-size: 14px; font-weight: 700; color: white;
+      box-shadow: 0 1px 3px rgba(108,92,231,0.3);
     }
-    .sb-header h1 { font-size: 15px; color: var(--accent); flex: 1; }
+    .sb-header h1 { font-size: 14px; color: var(--text); flex: 1; font-weight: 600; }
     .sb-header .dot {
       width: 8px; height: 8px; border-radius: 50%; background: var(--red);
     }
     .sb-header .dot.on { background: var(--green); }
 
     .nav {
-      display: flex; flex-direction: column; padding: 8px;
-      border-bottom: 1px solid var(--border); gap: 2px;
+      display: flex; flex-direction: column; padding: 4px 8px;
+      gap: 1px;
     }
     .nav button {
-      text-align: left; padding: 8px 12px; background: transparent;
-      border: none; color: var(--text-dim); border-radius: 6px;
-      cursor: pointer; font-size: 13px;
+      text-align: left; padding: 9px 12px; background: transparent;
+      border: none; color: var(--text-dim); border-radius: 8px;
+      cursor: pointer; font-size: 13.5px; font-weight: 500;
+      display: flex; align-items: center; gap: 10px;
+      transition: background 0.1s, color 0.1s;
     }
     .nav button:hover { background: var(--surface2); color: var(--text); }
-    .nav button.active { background: var(--accent-dim); color: white; }
+    .nav button.active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-active-text);
+      font-weight: 600;
+    }
+    .nav button.active .nav-icon { color: var(--sidebar-active-text); }
+    .nav-icon {
+      width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted);
+      stroke-width: 2; stroke: currentColor; fill: none;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .nav button:hover .nav-icon { color: var(--text); }
     .nav button .badge {
       float: right; background: var(--accent); color: white;
       font-size: 10px; padding: 1px 6px; border-radius: 8px;
@@ -98,14 +126,17 @@
     }
     .nav button.kill:hover { background: rgba(255,90,122,0.15); color: var(--red); }
     .nav-sep {
-      height: 1px; background: var(--border); margin: 6px 4px;
+      height: 1px; background: var(--border); margin: 8px 8px;
     }
     .nav-link {
-      text-align: left; padding: 8px 12px; color: var(--text-dim);
-      text-decoration: none; font-size: 13px; border-radius: 6px;
-      display: block;
+      text-align: left; padding: 9px 12px; color: var(--text-dim);
+      text-decoration: none; font-size: 13.5px; font-weight: 500;
+      border-radius: 8px;
+      display: flex; align-items: center; gap: 10px;
     }
     .nav-link:hover { background: var(--surface2); color: var(--text); }
+    .nav-link .nav-icon { color: var(--text-muted); }
+    .nav-link:hover .nav-icon { color: var(--text); }
 
     /* === Wallet page (Phase 4) === */
     .wallet-page { padding: 24px 32px; max-width: 980px; margin: 0 auto; }
@@ -591,14 +622,14 @@
     }
     .portfolio-widget .refresh:hover { text-decoration: underline; }
 
-    /* --- Main --- */
+    /* --- Main (Phase 11 — borderless clean topbar) --- */
     .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
     .topbar {
-      padding: 10px 18px; border-bottom: 1px solid var(--border);
-      background: var(--surface); display: flex;
-      justify-content: space-between; align-items: center; gap: 12px;
+      padding: 10px 22px; border-bottom: 1px solid var(--border);
+      background: var(--bg); display: flex;
+      justify-content: space-between; align-items: center; gap: 10px;
     }
-    .topbar .title { font-size: 13px; color: var(--text-dim); }
+    .topbar .title { font-size: 14px; color: var(--text); font-weight: 500; }
     .topbar .spacer { flex: 1; }
     .topbar .automode-toggle {
       display: flex; align-items: center; gap: 10px;
@@ -713,28 +744,47 @@
 
     /* Welcome / Gm hero / Tip card */
     .gm-hero {
-      text-align: center; padding: 80px 20px 30px;
+      text-align: center; padding: 100px 20px 24px;
     }
     .gm-hero .gm {
       font-size: 22px; font-weight: 600; color: var(--text);
-      letter-spacing: -0.3px;
+      letter-spacing: -0.4px; font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
     }
     .tip-card {
-      max-width: 540px; margin: 0 auto 26px;
+      max-width: 600px; margin: 0 auto 24px;
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; padding: 12px 14px;
-      display: flex; gap: 10px; font-size: 13px;
+      border-radius: 10px; padding: 14px 18px;
+      display: flex; gap: 12px; font-size: 13.5px;
+      align-items: flex-start;
     }
     .tip-card .tip-label {
-      color: var(--accent-light); font-weight: 600; font-size: 11px;
+      color: var(--accent); font-weight: 700; font-size: 11px;
       letter-spacing: 1px; text-transform: uppercase; flex-shrink: 0;
-      padding-top: 1px;
+      padding-top: 3px;
     }
-    .tip-card .tip-body { color: var(--text); line-height: 1.5; }
+    .tip-card .tip-body { color: var(--text-dim); line-height: 1.5; }
     .tip-card .tip-body code {
-      background: var(--surface2); padding: 1px 6px; border-radius: 3px;
-      font-family: 'SF Mono', monospace; font-size: 12px; color: var(--accent-light);
+      background: var(--accent-bg); padding: 2px 7px; border-radius: 4px;
+      font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px;
+      color: var(--accent); font-weight: 500;
     }
+    .tip-card .tip-body a { color: var(--accent); text-decoration: none; font-weight: 500; }
+    .tip-card .tip-body a:hover { text-decoration: underline; }
+
+    /* @THRYXAGI footer (Phase 11 — matches bankr's footer slot) */
+    .sb-footer {
+      padding: 12px 14px; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--text);
+    }
+    .sb-footer .avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: linear-gradient(135deg, #6c5ce7, #b8aaf5);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: 11px;
+      flex-shrink: 0;
+    }
+    .sb-footer .handle { font-weight: 500; }
 
     /* Composer + button + send pill */
     .input-area .plus-btn {
@@ -865,15 +915,21 @@
     .welcome .chip:hover { background: var(--accent-dim); }
 
     .input-area {
-      padding: 14px 18px; border-top: 1px solid var(--border); background: var(--surface);
+      padding: 14px 22px 20px;
+      background: var(--bg);
       display: flex; gap: 10px; align-items: flex-end;
+      max-width: 760px; width: 100%; margin: 0 auto;
     }
     .input-area textarea {
-      flex: 1; padding: 10px 14px; background: var(--surface2);
-      border: 1px solid var(--border); border-radius: 10px; font-size: 13px;
-      resize: none; min-height: 42px; max-height: 140px; outline: none; line-height: 1.4;
+      flex: 1; padding: 12px 14px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 14px; font-size: 14px;
+      resize: none; min-height: 44px; max-height: 160px; outline: none; line-height: 1.5;
+      transition: border-color 0.1s, box-shadow 0.1s;
     }
-    .input-area textarea:focus { border-color: var(--accent); }
+    .input-area textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(108,92,231,0.08);
+    }
     .input-area button {
       padding: 10px 20px; background: var(--accent); border: none; color: white;
       border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600;
@@ -1002,21 +1058,60 @@
       <div class="dot" id="statusDot" title="Server status"></div>
     </div>
     <div class="nav">
-      <button data-panel="chatPanel" class="active" onclick="showPanel('chatPanel')">Chat</button>
-      <button data-panel="walletPanel" onclick="showPanel('walletPanel')">Wallet</button>
-      <button data-panel="activityPanel" onclick="showPanel('activityPanel')">Activity</button>
-      <button data-panel="ordersPanel" onclick="showPanel('ordersPanel')">Orders</button>
-      <button data-panel="autoPanel" onclick="showPanel('autoPanel')">Automation <span class="badge" id="autoBadge" style="display:none">ON</span></button>
-      <button data-panel="positionsPanel" onclick="showPanel('positionsPanel')">Positions</button>
-      <button data-panel="launchesPanel" onclick="showPanel('launchesPanel')">Launches</button>
-      <button data-panel="filesPanel" onclick="showPanel('filesPanel')">Files</button>
+      <button data-panel="chatPanel" class="active" onclick="showPanel('chatPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat
+      </button>
+      <button data-panel="walletPanel" onclick="showPanel('walletPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M22 10H17a2 2 0 1 0 0 4h5"/></svg>
+        Wallet
+      </button>
+      <button data-panel="activityPanel" onclick="showPanel('activityPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
+        Activity
+      </button>
+      <button data-panel="ordersPanel" onclick="showPanel('ordersPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+        Orders
+      </button>
+      <button data-panel="autoPanel" onclick="showPanel('autoPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Automation <span class="badge" id="autoBadge" style="display:none">ON</span>
+      </button>
+      <button data-panel="positionsPanel" onclick="showPanel('positionsPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><line x1="6" y1="20" x2="6" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="14"/></svg>
+        Positions
+      </button>
+      <button data-panel="launchesPanel" onclick="showPanel('launchesPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Launches
+      </button>
+      <button data-panel="filesPanel" onclick="showPanel('filesPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Files
+      </button>
       <div class="nav-sep"></div>
-      <button data-panel="rawPanel" onclick="showPanel('rawPanel')">Raw CLI</button>
-      <button data-panel="skillsPanel" onclick="showPanel('skillsPanel')">Skills</button>
-      <button data-panel="memoryPanel" onclick="showPanel('memoryPanel')">Memory</button>
-      <button data-panel="settingsPanel" onclick="showPanel('settingsPanel')">Advanced</button>
-      <a class="nav-link" href="https://docs.bankr.bot" target="_blank" rel="noopener">Docs ↗</a>
-      <button onclick="newThread()" style="color: var(--accent-light); margin-top: 6px;">+ New Chat</button>
+      <button data-panel="rawPanel" onclick="showPanel('rawPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        Raw CLI
+      </button>
+      <button data-panel="skillsPanel" onclick="showPanel('skillsPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Skills
+      </button>
+      <button data-panel="memoryPanel" onclick="showPanel('memoryPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9 9h6M9 13h4"/></svg>
+        Memory
+      </button>
+      <button data-panel="settingsPanel" onclick="showPanel('settingsPanel')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        Advanced
+      </button>
+      <a class="nav-link" href="https://docs.bankr.bot" target="_blank" rel="noopener">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Docs <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">↗</span>
+      </a>
+      <button onclick="newThread()" style="color: var(--accent); margin-top: 6px;">+ New Chat</button>
     </div>
     <div class="threads">
       <div class="section-label">Recent threads</div>
@@ -1024,6 +1119,10 @@
     </div>
     <div class="portfolio-widget" id="portfolioWidget">
       <div class="muted">Loading wallet…</div>
+    </div>
+    <div class="sb-footer">
+      <div class="avatar">A</div>
+      <div class="handle">@THRYXAGI</div>
     </div>
   </div>
 
@@ -1584,11 +1683,12 @@
       } catch (_) {}
     }
 
-    // Theme — Phase 9. Sources: localStorage > system preference.
+    // Theme — Phase 9 plumbing, phase 11 defaults to light to match bankr.bot.
+    // localStorage wins; otherwise we prefer light (the bankr aesthetic).
     function getInitialTheme() {
       const saved = localStorage.getItem("theme");
       if (saved === "light" || saved === "dark") return saved;
-      return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      return "light";
     }
     function applyTheme(t) {
       document.documentElement.dataset.theme = t;
