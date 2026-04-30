@@ -401,6 +401,11 @@ const WRITE_PATTERNS = [
   /^x402\s+(deploy|delete|pause|resume|env\s+set|call)\b/,
   /^sounds\s+(install|use|volume|mute|unmute|enable|disable)\b/,
   /^weth-(unwrap|wrap)\b/, // recipes expand to wallet submit tx — also writes
+  // Phase 3 — newly gated namespaces
+  /^files\s+(write|rm|edit|mv|rename|mkdir|upload)\b/,
+  /^webhooks\s+(init|add|configure|deploy|pause|resume|delete)\b/,
+  /^webhooks\s+env\s+set\b/,
+  /^club\s+(signup|cancel)\b/,
 ];
 
 function isWriteCommand(cmdStr) {
@@ -474,8 +479,42 @@ function summarizeWrite(cmdStr) {
   if (name) summary.name = name;
   if (symbol) summary.symbol = symbol;
   if (simulate) summary.simulate = true;
-  summary.danger = args[0] === "wallet" && (args[1] === "transfer" || args[1] === "submit" || args[1] === "sign");
+  // Capture the first positional after the subcommand for value-moving
+  // writes that don't use --to / --symbol but do reference a token (e.g.
+  // `fees claim 0xabc…` claims fees from THAT token; `fees claim-wallet 0xabc`
+  // ditto). The verify-last-4 UI uses summary.to OR summary.symbol OR
+  // summary.target — having `target` populated lets the gate require the
+  // user to type the last 4 of the token address before confirming.
+  if (args[0] === "fees" && (args[1] === "claim" || args[1] === "claim-wallet")) {
+    const positional = args.slice(2).find((a) => !a.startsWith("-"));
+    if (positional) summary.target = positional;
+  }
+  summary.danger = isValueMovingDanger(args);
   return summary;
+}
+
+// Value-moving writes are extra-dangerous — they move funds, deploy contracts,
+// or pull from a wallet. The UI wraps these in the verify-last-4 gate so the
+// user has to physically type 4 characters of the destination/symbol/target
+// before the Confirm button enables. NOT every write is value-moving:
+//   - files write/rm/edit  — file mutations, no funds, standard confirm only
+//   - webhooks deploy      — config change, no funds (other than gas), same
+//   - sounds enable/disable — local UI prefs, not money
+// EVERY change to this predicate must come with a test in test/recipes.test.js
+// AND test/danger-gate.test.js asserting the new entry trips danger:true and
+// that the matching read DOES NOT.
+function isValueMovingDanger(args) {
+  const a0 = args[0], a1 = args[1], a2 = args[2];
+  if (a0 === "wallet" && (a1 === "transfer" || a1 === "submit" || a1 === "sign")) return true;
+  if (a0 === "launch") return true;
+  if (a0 === "fees" && (a1 === "claim" || a1 === "claim-wallet")) return true;
+  if (a0 === "club" && a1 === "signup") return true;
+  if (a0 === "llm" && a1 === "credits" && a2 === "add") return true;
+  if (a0 === "x402" && a1 === "call") return true;
+  // weth-* recipes expand to wallet submit tx BEFORE we reach this predicate
+  // (summarizeWrite calls expandRecipe, then runs args = expanded). So the
+  // wallet check above already catches them.
+  return false;
 }
 
 // Runs the CLI *after* recipe expansion. The LLM emits the short form; the
@@ -669,6 +708,21 @@ function invalidateLiveCaches(cmdStr) {
   }
   if (/^config\s+set\b/.test(c)) {
     contextCache.delete("whoami"); dropped.push("whoami");
+  }
+  // Phase 3 — new write families bust their respective caches/state
+  if (/^club\s+(signup|cancel)\b/.test(c)) {
+    contextCache.delete("clubStatus"); dropped.push("clubStatus");
+    contextCache.delete("whoami"); dropped.push("whoami");
+  }
+  if (/^webhooks\s+(add|deploy|delete|pause|resume|env\s+set|configure)\b/.test(c)) {
+    contextCache.delete("webhooksList"); dropped.push("webhooksList");
+  }
+  if (/^files\s+(write|rm|edit|mv|rename|mkdir|upload)\b/.test(c)) {
+    // Files don't have a global cache today, but the agent-skills cache may
+    // include user-installed skills referenced from files. Drop it so the
+    // next /api/agent/skills load reflects updated skill metadata.
+    agentSkillsCache = { ts: 0, output: null };
+    dropped.push("agentSkills");
   }
   cacheLog.debug(`invalidated`, { trigger: c.split(/\s+/, 3).join(" "), dropped });
 }
