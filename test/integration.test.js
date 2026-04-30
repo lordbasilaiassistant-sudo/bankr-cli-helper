@@ -132,3 +132,23 @@ test("GET / serves the SPA shell with all 11 panels", async (t) => {
   // Docs external link
   assert.ok(html.includes("docs.bankr.bot"), "Docs link to docs.bankr.bot must render");
 });
+
+test("Wallet panel scaffold has all expected elements (Phase 4)", async (t) => {
+  skipIfDead(t);
+  const html = await (await fetch(`${BASE}/`)).text();
+  // Header + action bar + tabs + tab containers
+  assert.ok(html.includes('id="walletHeader"'), "wallet header container");
+  assert.ok(html.includes('walletSend()'), "Send button");
+  assert.ok(html.includes('walletReceive()'), "Receive button");
+  assert.ok(html.includes('walletWrap()'), "Wrap button");
+  assert.ok(html.includes('walletUnwrap()'), "Unwrap button");
+  assert.ok(html.includes('id="walletTabTokens"'), "Tokens tab container");
+  assert.ok(html.includes('id="walletTabNfts"'), "NFTs tab container");
+  assert.ok(html.includes('id="walletTabHistory"'), "History tab container");
+  // Render functions are present in JS
+  assert.ok(html.includes('async function refreshWallet'), "refreshWallet function");
+  assert.ok(html.includes('function renderWalletTokens'), "renderWalletTokens function");
+  assert.ok(html.includes('function setWalletTab'), "setWalletTab function");
+  // Receive modal
+  assert.ok(html.includes('id="receiveModal"'), "receive modal markup");
+});
