@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js",
+    "test:unit": "node --test test/cache-invalidation.test.js",
+    "test:integration": "node --test test/integration.test.js"
   },
   "keywords": [
     "bankr",

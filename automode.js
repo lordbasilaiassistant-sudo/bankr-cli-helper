@@ -3,6 +3,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const dlog = require("./lib/logger").child("automode");
 
 const DATA_DIR = path.join(__dirname, "data");
 const STATE_FILE = path.join(DATA_DIR, "automode.json");
@@ -75,7 +76,7 @@ function loadState() {
     // merge with defaults in case new keys were added
     return deepMerge(structuredClone(DEFAULT_STATE), saved);
   } catch (e) {
-    console.error("[automode] corrupt state, resetting:", e.message);
+    dlog.error("corrupt state — resetting", { err: e.message });
     return structuredClone(DEFAULT_STATE);
   }
 }
@@ -121,7 +122,7 @@ function log(entry) {
     if (Math.random() < 0.02) maybeRotateLog();
   } catch (e) {
     // Logging must never crash the engine. Swallow.
-    console.log(`[automode] log write failed: ${e.message}`);
+    dlog.warn("jsonl write failed", { err: e.message });
   }
 }
 
@@ -133,9 +134,9 @@ function maybeRotateLog() {
     const keep = all.slice(Math.floor(all.length / 2));
     fs.writeFileSync(LOG_FILE + ".tmp", keep.join("\n") + "\n");
     fs.renameSync(LOG_FILE + ".tmp", LOG_FILE);
-    console.log(`[automode] log rotated, kept ${keep.length}/${all.length} lines`);
+    dlog.info(`jsonl rotated`, { kept: keep.length, total: all.length });
   } catch (e) {
-    console.log(`[automode] log rotate failed: ${e.message}`);
+    dlog.warn("jsonl rotate failed", { err: e.message });
   }
 }
 
@@ -408,11 +409,18 @@ let runBankrRef = null;
 let loadSettingsRef = null;
 
 async function tick() {
-  if (tickBusy) return;
+  if (tickBusy) {
+    dlog.trace("tick skipped — busy");
+    return;
+  }
   tickBusy = true;
+  const stopTick = dlog.time("tick");
   try {
     let state = loadState();
-    if (!state.enabled || state.killSwitch) return;
+    if (!state.enabled || state.killSwitch) {
+      dlog.trace("tick noop", { enabled: state.enabled, killSwitch: state.killSwitch });
+      return;
+    }
 
     maybeRollDailyCounters(state);
 
@@ -443,7 +451,11 @@ async function tick() {
     lastSeenKeyFingerprint = fp;
 
     const due = Object.keys(ACTIONS).filter((a) => shouldRun(state, a));
-    if (due.length === 0) return;
+    if (due.length === 0) {
+      dlog.trace("nothing due");
+      return;
+    }
+    dlog.info("tick: actions due", { due });
 
     const ctx = {
       runBankr: runBankrRef,
@@ -466,9 +478,13 @@ async function tick() {
       }
       ctx.state = fresh;
       state = fresh;
+      const stopAction = dlog.time(`action ${action}`);
       try {
-        await ACTIONS[action](ctx);
+        const r = await ACTIONS[action](ctx);
+        stopAction({ ok: r && r.ok !== false, skipped: r && r.skipped, reason: r && r.reason });
       } catch (e) {
+        stopAction({ error: e.message });
+        dlog.error(`action threw: ${action}`, { err: e.message });
         log({ action, ok: false, error: e.message });
       }
       markRan(state, action);
@@ -476,6 +492,7 @@ async function tick() {
     saveState(state);
   } finally {
     tickBusy = false;
+    stopTick();
   }
 }
 
@@ -486,7 +503,7 @@ function start({ runBankr, loadSettings }) {
   timer = setInterval(tick, 60_000); // every minute — cheap, mostly no-op
   // fire a tick shortly after startup so enabled jobs don't wait a full minute
   setTimeout(tick, 5_000);
-  console.log("[automode] engine armed");
+  dlog.info("engine armed", { interval_ms: 60_000 });
 }
 
 function stop() {
@@ -523,6 +540,8 @@ function setKillSwitch(on) {
 
 async function runActionNow(actionName) {
   if (!ACTIONS[actionName]) throw new Error(`Unknown action: ${actionName}`);
+  dlog.warn("runActionNow invoked (manual override)", { action: actionName });
+  const stopAct = dlog.time(`runActionNow ${actionName}`);
   const state = loadState();
   const settings = loadSettingsRef();
   const ctx = {
@@ -531,10 +550,17 @@ async function runActionNow(actionName) {
     state,
     log,
   };
-  const r = await ACTIONS[actionName](ctx);
-  markRan(state, actionName);
-  saveState(state);
-  return r;
+  try {
+    const r = await ACTIONS[actionName](ctx);
+    stopAct({ ok: r && r.ok !== false, skipped: r && r.skipped, reason: r && r.reason });
+    markRan(state, actionName);
+    saveState(state);
+    return r;
+  } catch (e) {
+    stopAct({ error: e.message });
+    dlog.error(`runActionNow threw: ${actionName}`, { err: e.message });
+    throw e;
+  }
 }
 
 module.exports = {
