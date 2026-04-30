@@ -1259,10 +1259,16 @@
         <div id="walletTabTokens" class="wallet-tab"></div>
         <div id="walletTabNfts" class="wallet-tab" style="display:none"></div>
         <div id="walletTabHistory" class="wallet-tab" style="display:none">
-          <div class="empty-state">
-            <div class="icon">·</div>
-            On-chain activity history requires bankr's paid agent. For now, see <a href="#" onclick="showPanel('activityPanel');return false" style="color:var(--accent-light)">Activity</a> for app-level actions.
+          <div id="walletHistoryList">
+            <div class="empty-state">
+              <div class="icon">·</div>
+              Loading wallet history…
+            </div>
           </div>
+          <p class="muted" style="font-size:11px;margin-top:14px;text-align:center">
+            App-level wallet actions only. Full on-chain history requires bankr's paid agent or a chain explorer like
+            <a href="https://basescan.org" target="_blank" style="color:var(--accent-light)">basescan.org</a>.
+          </p>
         </div>
       </div>
     </div>
@@ -2864,6 +2870,50 @@
       document.getElementById("walletTabTokens").style.display = tab === "tokens" ? "" : "none";
       document.getElementById("walletTabNfts").style.display = tab === "nfts" ? "" : "none";
       document.getElementById("walletTabHistory").style.display = tab === "history" ? "" : "none";
+      if (tab === "history") renderWalletHistory();
+    }
+
+    // Phase 19 — wallet History tab renders app-level wallet activity from
+    // the unified action log (data/automode-log.jsonl). This is the same log
+    // the Activity page reads from, but filtered to wallet-related actions
+    // only: transfer/sign/submit + weth recipes + fees claim.
+    async function renderWalletHistory() {
+      const cont = document.getElementById("walletHistoryList");
+      cont.innerHTML = `<div class="empty-state"><div class="icon">·</div>Loading…</div>`;
+      try {
+        const log = await (await fetch("/api/automode/log?n=200")).json();
+        const wallet = (Array.isArray(log) ? log : []).filter((e) => {
+          const a = (e.action || "").toLowerCase();
+          // Wallet ACTIONS only — not reads. portfolio queries / whoami /
+          // snapshot polling don't belong in History (user didn't do those).
+          return /^wallet\s+(transfer|sign|submit)\b/.test(a)
+            || /^weth-(wrap|unwrap)\b/.test(a)
+            || /^fees\s+claim/.test(a);
+        });
+        if (wallet.length === 0) {
+          cont.innerHTML = `<div class="empty-state">
+            <div class="icon">·</div>
+            No wallet activity recorded yet. Transfers, signs, claims, and recipe runs (wrap/unwrap) will appear here.
+          </div>`;
+          return;
+        }
+        cont.innerHTML = wallet.map((e) => {
+          const ts = e.ts ? formatActivityTs(e.ts) : "";
+          const status = e.error || e.ok === false
+            ? '<span class="status err">err</span>'
+            : '<span class="status ok">ok</span>';
+          const kindClass = e.kind || "auto";
+          return `<div class="activity-row" style="cursor:default">
+            <span class="ts">${escHtml(ts)}</span>
+            <span class="label"><span class="kind ${kindClass}">${escHtml(kindClass)}</span>${escHtml(e.action || "(unknown)")}</span>
+            ${status}
+          </div>`;
+        }).join("");
+      } catch (err) {
+        cont.innerHTML = `<div class="empty-state" style="color:var(--red)">
+          Failed to load: ${escHtml(err.message)}
+        </div>`;
+      }
     }
 
     // --- Action bar handlers — all route through Chat with a pre-filled prompt
