@@ -1555,16 +1555,35 @@
           </div>
         </div>
 
-        <!-- Section: Webhooks -->
+        <!-- Section: Webhooks (Phase 16 — full lifecycle CRUD) -->
         <div class="acc" data-acc="webhooks">
           <div class="acc-head" onclick="toggleAcc('webhooks')">
             <span>Webhooks</span>
             <span class="acc-chevron">▾</span>
           </div>
           <div class="acc-body">
-            <pre class="acc-output" id="advWebhooksOutput">Click to load…</pre>
+            <p class="muted" style="font-size:11px;margin-top:8px">
+              Webhooks trigger the Bankr agent on external events. Workflow:
+              <code>init</code> (scaffold local) → <code>add</code> → <code>deploy</code> → live.
+            </p>
+            <pre class="acc-output" id="advWebhooksOutput">Click "List deployed" to see your webhooks…</pre>
             <div class="btn-row">
-              <button class="btn" onclick="advRunRead('webhooks list', 'advWebhooksOutput')">List</button>
+              <button class="btn" onclick="advRunRead('webhooks list', 'advWebhooksOutput')">List deployed</button>
+              <button class="btn" onclick="advRunRead('webhooks logs ' + (prompt('Webhook name:') || ''), 'advWebhooksOutput')">View logs</button>
+            </div>
+            <div class="btn-row" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px">
+              <button class="btn" onclick="webhookInit()">Init scaffold</button>
+              <button class="btn" onclick="webhookAdd()">Add handler</button>
+              <button class="btn" onclick="webhookDeploy()">Deploy</button>
+            </div>
+            <div class="btn-row" style="margin-top:8px">
+              <button class="btn" onclick="webhookLifecycle('pause')">Pause…</button>
+              <button class="btn" onclick="webhookLifecycle('resume')">Resume…</button>
+              <button class="btn" onclick="webhookLifecycle('delete')">Delete…</button>
+            </div>
+            <div class="btn-row" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px">
+              <button class="btn" onclick="advRunRead('webhooks env', 'advWebhooksOutput')">View env vars</button>
+              <button class="btn" onclick="webhookEnvSet()">Set env var…</button>
             </div>
           </div>
         </div>
@@ -3734,6 +3753,56 @@
       } catch (e) {
         out.textContent = "Error: " + e.message;
       }
+    }
+
+    // Phase 16 — webhook lifecycle helpers.
+    // init/add/deploy interact with local files (webhooks/ folder); we route
+    // them through Chat so the LLM can prompt for missing fields and the
+    // user can audit each step. Pause/resume/delete take a webhook name —
+    // we prompt for it and stage through the danger gate.
+    function webhookInit() {
+      showPanel("chatPanel");
+      document.getElementById("input").value =
+        "I want to initialize a webhooks scaffold. Run `webhooks init`.";
+      document.getElementById("input").focus();
+    }
+    function webhookAdd() {
+      const name = prompt("New handler name (alphanumeric+_-):");
+      if (!name || !/^[A-Za-z0-9_-]{1,64}$/.test(name)) {
+        if (name) alert("Invalid name (alphanumeric, _, - only).");
+        return;
+      }
+      showPanel("chatPanel");
+      document.getElementById("input").value =
+        `Add a new webhook handler called "${name}". Walk me through the options.`;
+      document.getElementById("input").focus();
+    }
+    function webhookDeploy() {
+      const name = prompt("Deploy which webhook? (blank = all):");
+      const cmd = name && /^[A-Za-z0-9_-]{1,64}$/.test(name)
+        ? `webhooks deploy ${name}`
+        : "webhooks deploy";
+      advRunWrite(cmd);
+    }
+    function webhookLifecycle(action) {
+      // action ∈ {pause, resume, delete}
+      const name = prompt(`${action.charAt(0).toUpperCase() + action.slice(1)} which webhook? (name):`);
+      if (!name || !/^[A-Za-z0-9_-]{1,64}$/.test(name)) {
+        if (name) alert("Invalid name (alphanumeric, _, - only).");
+        return;
+      }
+      advRunWrite(`webhooks ${action} ${name}`);
+    }
+    function webhookEnvSet() {
+      const key = prompt("Env var name (UPPER_SNAKE):");
+      if (!key || !/^[A-Z][A-Z0-9_]{0,63}$/.test(key)) {
+        if (key) alert("Invalid env var name (UPPER_SNAKE_CASE).");
+        return;
+      }
+      const val = prompt(`Value for ${key} (will be encrypted):`);
+      if (val === null) return;
+      // Send via /api/bankr — webhooks env set is in WRITE_PATTERNS (phase 3)
+      advRunWrite(`webhooks env set ${key} ${JSON.stringify(val)}`);
     }
 
     // Run a write command — flows through the danger gate, surfacing the
