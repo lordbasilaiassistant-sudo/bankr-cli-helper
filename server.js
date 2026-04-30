@@ -21,8 +21,11 @@ const automode = require("./automode");
 const logger = require("./lib/logger");
 const log = logger.child("server");
 
+const os = require("os");
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+// 6mb covers most file-upload bodies (base64-encoded ~4.5MB binary). Localhost
+// only — no public exposure means no DoS surface from oversized requests.
+app.use(express.json({ limit: "6mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Per-request id middleware. Untangles concurrent chat / bankr calls in logs.
@@ -1445,6 +1448,67 @@ app.get("/api/files/storage", async (req, res) => {
   if (!settings.bankrApiKey) return res.status(400).json({ ok: false, reason: "no_bankr_key" });
   const r = await runBankr("files storage", settings);
   res.json({ ok: r.ok, output: r.output });
+});
+
+// Files upload (Phase 14) — accepts JSON {remotePath, filename, contentB64},
+// writes the decoded body to a temp file, then stages a `files upload` write
+// through the same pending-confirm mechanism the rest of the app uses. The
+// frontend redirects the user to the Chat panel where the existing confirm
+// box surfaces. We never run the upload directly — every write requires
+// explicit user approval.
+const UPLOAD_TMP_DIR = path.join(os.tmpdir(), "bankr-helper-uploads");
+if (!fs.existsSync(UPLOAD_TMP_DIR)) fs.mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
+
+app.post("/api/files/upload", async (req, res) => {
+  const settings = loadSettings();
+  if (!settings.bankrApiKey) return res.status(400).json({ ok: false, reason: "no_bankr_key" });
+  const { remotePath, filename, contentB64 } = req.body || {};
+  if (!remotePath || !filename || !contentB64) {
+    return res.status(400).json({ ok: false, reason: "missing_fields" });
+  }
+  const cleanRemote = safeFilesPath(remotePath);
+  if (!cleanRemote || cleanRemote === "/") {
+    return res.status(400).json({ ok: false, reason: "invalid_remote" });
+  }
+  // Strict filename — extension preserved, everything else normalized.
+  const cleanName = String(filename).replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 100);
+  if (!cleanName || cleanName.startsWith(".")) {
+    return res.status(400).json({ ok: false, reason: "invalid_filename" });
+  }
+  // Hard cap on body size after the JSON parser already enforced 6mb. The
+  // base64 string would expand ~33% into binary, so 5MB base64 is ~3.7MB.
+  if (typeof contentB64 !== "string" || contentB64.length > 5 * 1024 * 1024) {
+    return res.status(413).json({ ok: false, reason: "too_large" });
+  }
+  // Write to a per-request temp file so concurrent uploads don't collide.
+  const tmpPath = path.join(UPLOAD_TMP_DIR, `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${cleanName}`);
+  try {
+    fs.writeFileSync(tmpPath, Buffer.from(contentB64, "base64"));
+  } catch (e) {
+    return res.status(400).json({ ok: false, reason: "decode_failed", error: e.message });
+  }
+  // Construct the bankr command and stage it. files upload is in WRITE_PATTERNS
+  // (phase 3), so /api/bankr/confirm will run it on user approval.
+  const cmd = `files upload ${JSON.stringify(tmpPath)} ${JSON.stringify(cleanRemote)}`;
+  const pendingId = stashPending(cmd);
+  // Note: temp file lingers in os.tmpdir() until OS cleanup. We don't aggressively
+  // delete since the user might cancel-then-re-confirm. The OS handles temp
+  // cleanup at reboot or via /tmp eviction policies.
+  res.json({
+    ok: false,
+    confirmRequired: true,
+    pendingId,
+    command: cmd,
+    summary: {
+      command: cmd,
+      root: "files upload",
+      filename: cleanName,
+      target: cleanRemote,
+      tmpPath,
+      bytes: Buffer.from(contentB64, "base64").length,
+      danger: false, // file upload is a write but not value-moving
+    },
+  });
 });
 
 // Files search — wraps `files search <query>`. Query gets sanitized to

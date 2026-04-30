@@ -83,11 +83,12 @@ test("chat: rejects huge messages with a graceful 400", async (t) => {
   const r = await fetch(`${BASE}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message: "a".repeat(2 * 1024 * 1024) }), // 2MB
+    body: JSON.stringify({ message: "a".repeat(7 * 1024 * 1024) }), // 7MB
     signal: AbortSignal.timeout(10_000),
   });
-  // Express body-parser default limit is 1mb — should reject before reaching us
-  assert.ok(r.status === 413 || r.status === 400);
+  // Body-parser limit was bumped from 1mb to 6mb in phase 14 to fit file
+  // uploads. 7MB blows past it and should reject before reaching us.
+  assert.ok(r.status === 413 || r.status === 400, `expected 413/400, got ${r.status}`);
 });
 
 test("chat: response excludes internal blocks (bankr-run, memory-update)", async (t) => {

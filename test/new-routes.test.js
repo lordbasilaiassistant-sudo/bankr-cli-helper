@@ -155,3 +155,56 @@ test("agent skills cache flag is honored on second call", async (t) => {
   // be the first to populate the cache — what we assert is shape.
   assert.equal(typeof r2.json.cached, "boolean");
 });
+
+// === Phase 14 — file upload endpoint ===
+test("POST /api/files/upload stages a write (no execute)", async (t) => {
+  skipIfDead(t);
+  const content = Buffer.from("phase 14 test payload").toString("base64");
+  const r = await postJson("/api/files/upload", {
+    remotePath: "/__test-upload.txt",
+    filename: "__test-upload.txt",
+    contentB64: content,
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.confirmRequired, true);
+  assert.ok(r.json.pendingId, "must return pendingId");
+  assert.ok(r.json.command.includes("files upload"));
+  assert.equal(r.json.summary.target, "/__test-upload.txt");
+  assert.equal(r.json.summary.bytes, 21);
+  // file uploads write data but don't move funds — danger:false (no verify-last-4)
+  assert.equal(r.json.summary.danger, false);
+});
+
+test("POST /api/files/upload rejects missing fields", async (t) => {
+  skipIfDead(t);
+  const r = await postJson("/api/files/upload", { remotePath: "/x.txt" });
+  assert.equal(r.status, 400);
+  assert.equal(r.json.reason, "missing_fields");
+});
+
+test("POST /api/files/upload sanitizes shell-meta in filename", async (t) => {
+  skipIfDead(t);
+  const r = await postJson("/api/files/upload", {
+    remotePath: "/safe.txt",
+    filename: "evil;rm -rf;.txt",
+    contentB64: "aGVsbG8=",
+  });
+  assert.equal(r.status, 200);
+  // shell-metas stripped to underscores
+  assert.equal(/[;`$|<>]/.test(r.json.summary.filename), false,
+    `filename must not contain shell metacharacters: ${r.json.summary.filename}`);
+});
+
+test("POST /api/files/upload rejects oversized payloads", async (t) => {
+  skipIfDead(t);
+  // 6MB+ base64 string — over the express.json 6mb limit
+  const huge = "A".repeat(7 * 1024 * 1024);
+  const r = await fetch(`${BASE}/api/files/upload`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ remotePath: "/big", filename: "big", contentB64: huge }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  // Either body-parser rejects with 413, or our validator catches it
+  assert.ok(r.status === 413 || r.status === 400, `expected 413/400, got ${r.status}`);
+});

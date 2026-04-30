@@ -3576,10 +3576,56 @@
         });
     }
 
+    // Phase 14 — real upload. Reads the picked file as base64, sends to
+    // /api/files/upload, which stages a `files upload` write through the
+    // standard danger-gate flow. User confirms in Chat panel before the
+    // file actually hits bankr storage.
     function filesUpload() {
-      // Multipart upload would require backend work (not in phase 7 yet).
-      // For now, surface a "use the wizard via chat" path.
-      alert("Upload UI lands in a follow-up. For now: paste content via 'New File' or use Chat: 'upload <local path> to <bankr path>'.");
+      const input = document.createElement("input");
+      input.type = "file";
+      input.onchange = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const remotePath = prompt(
+          `Upload "${file.name}" (${(file.size / 1024).toFixed(1)} KB) to remote path:`,
+          (filesCurrentPath || "/").replace(/\/$/, "") + "/" + file.name
+        );
+        if (!remotePath) return;
+        // Hard cap matches server (5MB binary)
+        if (file.size > 5 * 1024 * 1024) {
+          alert("File too large (max 5MB).");
+          return;
+        }
+        try {
+          // Read as base64 — chunked btoa to handle binary files
+          const buf = await file.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let bin = "";
+          for (let i = 0; i < bytes.length; i += 32768) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
+          }
+          const contentB64 = btoa(bin);
+          const r = await fetch("/api/files/upload", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ remotePath, filename: file.name, contentB64 }),
+          });
+          const j = await r.json();
+          if (j.confirmRequired) {
+            showPanel("chatPanel");
+            renderMessages([{
+              role: "assistant",
+              content: `File upload staged — ${file.name} (${(file.size / 1024).toFixed(1)} KB) → ${remotePath}. Confirm below to write.`,
+              pending: { id: j.pendingId, command: j.command, summary: j.summary },
+            }]);
+          } else {
+            alert("Upload failed: " + (j.reason || j.error || JSON.stringify(j).slice(0, 100)));
+          }
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
+      };
+      input.click();
     }
 
     async function filesDoSearch() {
