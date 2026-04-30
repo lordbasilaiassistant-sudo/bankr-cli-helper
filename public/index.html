@@ -513,6 +513,30 @@
     }
     .files-editor .empty .big { font-size: 32px; opacity: 0.3; margin-bottom: 10px; }
 
+    /* === Advanced accordion (Phase 10) === */
+    .advanced-page { padding-bottom: 40px; }
+    .acc {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+    }
+    .acc-head {
+      padding: 12px 16px; cursor: pointer; user-select: none;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px; color: var(--text); font-weight: 500;
+    }
+    .acc-head:hover { background: var(--surface2); }
+    .acc-chevron { color: var(--text-dim); font-size: 11px; transition: transform 0.2s; }
+    .acc.open .acc-chevron { transform: rotate(0deg); color: var(--accent); }
+    .acc:not(.open) .acc-chevron { transform: rotate(-90deg); }
+    .acc-body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border); }
+    .acc.open .acc-body { display: block; }
+    .acc-output {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 12px; font-family: 'SF Mono', monospace;
+      font-size: 11px; color: var(--text-dim); white-space: pre-wrap;
+      max-height: 280px; overflow-y: auto; margin: 12px 0 8px;
+    }
+
     /* Stub panel — used by Phase-1 placeholders before pages land */
     .stub {
       padding: 40px 32px; max-width: 640px; margin: 0 auto;
@@ -1335,27 +1359,159 @@
       </div>
     </div>
 
-    <!-- Settings Panel -->
+    <!-- Advanced Panel (Phase 10 — was Settings) -->
     <div class="panel" id="settingsPanel">
-      <div class="panel-inner">
-        <h2>Settings</h2>
-        <div class="card settings-form">
-          <label>Groq API Key</label>
-          <input type="password" id="setGroqKey" placeholder="gsk_...">
-          <label>Groq Model</label>
-          <select id="setGroqModel">
-            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (recommended)</option>
-            <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant</option>
-            <option value="llama3-70b-8192">Llama 3 70B</option>
-            <option value="gemma2-9b-it">Gemma 2 9B</option>
-            <option value="deepseek-r1-distill-llama-70b">DeepSeek R1 70B</option>
-            <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-          </select>
-          <label>Bankr API Key</label>
-          <input type="password" id="setBankrKey" placeholder="bk_usr_...">
-          <div class="btn-row">
-            <button class="btn primary" onclick="saveSettings()">Save</button>
-            <span id="saveFb" class="muted" style="align-self: center;"></span>
+      <div class="panel-inner advanced-page">
+        <h2 style="margin-bottom:16px">Advanced</h2>
+        <p class="muted" style="margin-bottom:18px;font-size:12px">Settings, on-chain operations, and bankr CLI namespaces that don't have their own dedicated page yet. Each section is an accordion — click to expand.</p>
+
+        <!-- Section: API Keys (always-open since the app needs these) -->
+        <div class="acc open" data-acc="keys">
+          <div class="acc-head" onclick="toggleAcc('keys')">
+            <span>API Keys</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <div class="card settings-form">
+              <label>Groq API Key</label>
+              <input type="password" id="setGroqKey" placeholder="gsk_...">
+              <label>Groq Model</label>
+              <select id="setGroqModel">
+                <option value="llama-3.3-70b-versatile">Llama 3.3 70B (recommended)</option>
+                <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant</option>
+                <option value="llama3-70b-8192">Llama 3 70B</option>
+                <option value="gemma2-9b-it">Gemma 2 9B</option>
+                <option value="deepseek-r1-distill-llama-70b">DeepSeek R1 70B</option>
+                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+              </select>
+              <label>Bankr API Key</label>
+              <input type="password" id="setBankrKey" placeholder="bk_usr_...">
+              <div class="btn-row">
+                <button class="btn primary" onclick="saveSettings()">Save</button>
+                <span id="saveFb" class="muted" style="align-self: center;"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: LLM Credits -->
+        <div class="acc" data-acc="credits">
+          <div class="acc-head" onclick="toggleAcc('credits')">
+            <span>LLM Credits</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advCreditsOutput">Click to load…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('llm credits', 'advCreditsOutput')">Refresh</button>
+              <button class="btn primary" onclick="advRunWrite(prompt('USDC amount to add (e.g. 5):') ? 'llm credits add ' + prompt('USDC amount to add (e.g. 5):') + ' --token USDC -y' : null)">Top up</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Bankr Club -->
+        <div class="acc" data-acc="club">
+          <div class="acc-head" onclick="toggleAcc('club')">
+            <span>Bankr Club</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advClubOutput">Click to load…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('club status', 'advClubOutput')">Refresh</button>
+              <button class="btn primary" onclick="advRunWrite('club signup -y')">Sign up (monthly)</button>
+              <button class="btn" onclick="advRunWrite('club signup --yearly -y')">Sign up (yearly)</button>
+              <button class="btn" onclick="advRunWrite('club cancel -y')">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: x402 endpoints -->
+        <div class="acc" data-acc="x402">
+          <div class="acc-head" onclick="toggleAcc('x402')">
+            <span>x402 (paid-API endpoints)</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advX402Output">Click to load…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('x402 list', 'advX402Output')">List</button>
+              <button class="btn" onclick="advRunRead('x402 search ' + (prompt('Search query:') || ''), 'advX402Output')">Search</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Webhooks -->
+        <div class="acc" data-acc="webhooks">
+          <div class="acc-head" onclick="toggleAcc('webhooks')">
+            <span>Webhooks</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advWebhooksOutput">Click to load…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('webhooks list', 'advWebhooksOutput')">List</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Sounds -->
+        <div class="acc" data-acc="sounds">
+          <div class="acc-head" onclick="toggleAcc('sounds')">
+            <span>Sounds (CESP packs)</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advSoundsOutput">Click to load…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('sounds list', 'advSoundsOutput')">List installed</button>
+              <button class="btn" onclick="advRunWrite('sounds enable')">Enable</button>
+              <button class="btn" onclick="advRunWrite('sounds disable')">Disable</button>
+              <button class="btn" onclick="advRunWrite('sounds mute')">Mute</button>
+              <button class="btn" onclick="advRunWrite('sounds unmute')">Unmute</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Config (CLI-level) -->
+        <div class="acc" data-acc="config">
+          <div class="acc-head" onclick="toggleAcc('config')">
+            <span>CLI Config</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advConfigOutput">Click to load…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('config get', 'advConfigOutput')">Get all</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Update -->
+        <div class="acc" data-acc="update">
+          <div class="acc-head" onclick="toggleAcc('update')">
+            <span>CLI Update</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advUpdateOutput">Click to check…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('update --check', 'advUpdateOutput')">Check</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Login URL (read-only) -->
+        <div class="acc" data-acc="login">
+          <div class="acc-head" onclick="toggleAcc('login')">
+            <span>Bankr Dashboard URL</span>
+            <span class="acc-chevron">▾</span>
+          </div>
+          <div class="acc-body">
+            <pre class="acc-output" id="advLoginOutput">Click to print URL…</pre>
+            <div class="btn-row">
+              <button class="btn" onclick="advRunRead('login --url', 'advLoginOutput')">Get URL</button>
+            </div>
           </div>
         </div>
       </div>
@@ -3227,6 +3383,54 @@
           `<pre>${escHtml(j.output || "(no results)")}</pre>`;
       } catch (e) {
         alert("Search error: " + e.message);
+      }
+    }
+
+    // =================== ADVANCED PAGE (Phase 10) ===================
+    function toggleAcc(name) {
+      const el = document.querySelector(`.acc[data-acc="${name}"]`);
+      if (el) el.classList.toggle("open");
+    }
+
+    // Run a read command and pipe its output into a pre block.
+    async function advRunRead(cmd, outputId) {
+      if (!cmd) return;
+      const out = document.getElementById(outputId);
+      if (!out) return;
+      out.textContent = "Running…";
+      try {
+        const r = await fetch("/api/bankr", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: cmd })
+        });
+        const j = await r.json();
+        out.textContent = j.output || (j.error ? "Error: " + j.error : "(no output)");
+      } catch (e) {
+        out.textContent = "Error: " + e.message;
+      }
+    }
+
+    // Run a write command — flows through the danger gate, surfacing the
+    // confirm box in Chat panel just like every other write.
+    async function advRunWrite(cmd) {
+      if (!cmd) return;
+      try {
+        const r = await fetch("/api/bankr", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: cmd })
+        });
+        const j = await r.json();
+        if (j.confirmRequired) {
+          showPanel("chatPanel");
+          renderMessages([{ role: "assistant", content: "Action staged — confirm below.",
+                            pending: { id: j.pendingId, command: j.command, summary: j.summary } }]);
+        } else if (j.ok === false) {
+          alert("Failed: " + (j.output || j.error || "unknown"));
+        } else {
+          alert("Done.");
+        }
+      } catch (e) {
+        alert("Error: " + e.message);
       }
     }
 
