@@ -1,7 +1,7 @@
 {
   "name": "bankr-cli-helper",
   "version": "0.1.0",
-  "description": "Local web app that wraps the Bankr CLI with a free Groq LLM frontend. Chat, raw CLI, and an auto-mode scheduler that claims fees, launches tokens, and snapshots your portfolio.",
+  "description": "Local web app that wraps the Bankr CLI with a Groq LLM frontend (free tier with rate limits, or paid for higher throughput). Chat, raw CLI, and an auto-mode scheduler that claims fees, launches tokens, and snapshots your portfolio.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -1,7 +1,7 @@
 # Bankr CLI Helper
 
 A local web app that wraps the [Bankr CLI](https://www.npmjs.com/package/@bankr/cli)
-with a free Groq LLM frontend. Chat with your own AI about your Bankr wallet,
+with a Groq LLM frontend. Chat with your own AI about your Bankr wallet,
 run raw CLI commands with one click, and let an auto-mode engine claim fees,
 launch tokens, and snapshot your portfolio on a schedule.
 
@@ -13,8 +13,10 @@ The `bankr agent` / `bankr prompt` commands route through Bankr's paid LLM. Ever
 prompt costs credits. But every *direct* CLI command (`wallet portfolio`,
 `tokens search`, `fees`, `fees claim`, `launch`, …) is free.
 
-This app puts a free LLM (Groq) in front of the CLI and lets it pick commands
-on your behalf. You get an assistant without paying per turn.
+This app puts Groq in front of the CLI and lets it pick commands on your
+behalf. Groq has a generous free tier with rate limits (~30 req/min on most
+models) and a pay-as-you-go paid tier for higher throughput — either way it
+works out far cheaper per turn than Bankr's paid LLM credits.
 
 ## Features
 
@@ -46,7 +48,7 @@ npm start
 
 ### Keys you need
 
-- **Groq API key** — free, create at [console.groq.com](https://console.groq.com)
+- **Groq API key** — sign up at [console.groq.com](https://console.groq.com). Free tier covers most casual use (rate-limited); paid tier is pay-as-you-go (~$0.05–$0.80 per 1M tokens depending on model).
 - **Bankr API key** — generate at [bankr.bot/api](https://bankr.bot/api)
 
 Both can be set via `.env` OR pasted into the Settings panel (stored in

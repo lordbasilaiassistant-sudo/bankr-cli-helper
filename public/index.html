@@ -1139,7 +1139,7 @@
         <option value="deepseek-r1-distill-llama-70b">deepseek-r1-70b</option>
         <option value="mixtral-8x7b-32768">mixtral-8x7b</option>
       </select>
-      <span class="topbar-credits" id="topbarCredits" title="Groq is free. Click for bankr LLM credits.">Groq · free</span>
+      <span class="topbar-credits" id="topbarCredits" title="Groq has a rate-limited free tier and a pay-as-you-go paid tier. Bankr LLM credits shown if loaded.">Groq</span>
       <button class="topbar-icon" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark" aria-label="Toggle theme">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="themeIcon">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -1677,7 +1677,7 @@
       { html: `Auto-mode claims fees while you sleep. Set thresholds in <a href="#" onclick="showPanel('autoPanel');return false" style="color:var(--accent-light)">Automation</a>.` },
       { html: `Every action lands in <a href="#" onclick="showPanel('activityPanel');return false" style="color:var(--accent-light)">Activity</a> with full output.` },
       { html: `Need a creative token? Try the wizard in <a href="#" onclick="showPanel('launchesPanel');return false" style="color:var(--accent-light)">Launches</a> — Latin / Old Norse / Sanskrit names by default.` },
-      { html: `Shift+Enter for newline. The model selector in the topbar swaps between 6 free Groq models.` },
+      { html: `Shift+Enter for newline. The model selector in the topbar swaps between 6 Groq models — free tier covers casual use; paid tier is pay-as-you-go.` },
     ];
     function pickTip() {
       const el = document.getElementById("tipBody");
@@ -1801,7 +1801,10 @@
       closeComposerMenu();
     }
 
-    // Bankr LLM credits: surface in the topbar if loaded. Groq stays "free".
+    // Bankr LLM credits: surface in the topbar if loaded.
+    // Note: "Groq" with no qualifier — their free tier exists but is
+    // rate-limited; their paid tier is pay-as-you-go (~$0.05-$0.80/1M tokens).
+    // Calling either "free" was inaccurate.
     async function syncCreditsIndicator() {
       try {
         const r = await (await fetch("/api/llm/credits")).json();
@@ -1810,8 +1813,8 @@
           if (m) {
             const el = document.getElementById("topbarCredits");
             if (el) {
-              el.textContent = "Groq · free · Bankr $" + m[1];
-              el.title = "Groq is free. Bankr LLM credits balance: $" + m[1];
+              el.textContent = "Groq · Bankr $" + m[1];
+              el.title = "Groq has rate-limited free + pay-as-you-go paid tiers. Bankr LLM credits balance: $" + m[1];
             }
           }
         }
