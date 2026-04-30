@@ -21,6 +21,23 @@
       --yellow: #ffc85a;
       --orange: #ff9d4a;
     }
+    /* Light theme — Phase 9. Phase 11 dials in the exact bankr.bot palette. */
+    html[data-theme="light"] {
+      --bg: #f8f7fc;
+      --surface: #ffffff;
+      --surface2: #f4f2f9;
+      --surface3: #eae6f3;
+      --border: #e3e0ec;
+      --text: #1a1a26;
+      --text-dim: #6a6a8a;
+      --accent: #6c5ce7;
+      --accent-dim: #4f3fc0;
+      --accent-light: #8a7af0;
+      --green: #00a86f;
+      --red: #d54260;
+      --yellow: #d99c30;
+      --orange: #d97a30;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     body {
@@ -609,6 +626,67 @@
     .topbar .topbar-icon:hover { color: var(--text); border-color: var(--accent); }
     .topbar .topbar-icon.muted { color: var(--text-dim); opacity: 0.5; }
 
+    /* Hamburger — only visible on mobile via media query below */
+    .hamburger {
+      display: none; padding: 4px 10px; background: transparent;
+      border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); cursor: pointer; font-size: 16px;
+    }
+
+    /* === Phase 9: mobile responsive === */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 100;
+        transform: translateX(-100%); transition: transform 0.2s ease;
+      }
+      .sidebar.open { transform: translateX(0); box-shadow: 4px 0 16px rgba(0,0,0,0.3); }
+      .sidebar-backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+        z-index: 99; display: none;
+      }
+      .sidebar-backdrop.show { display: block; }
+
+      .hamburger { display: block; }
+      .topbar { padding: 8px 12px; flex-wrap: nowrap; gap: 6px; overflow-x: auto; }
+      .topbar .title { font-size: 12px; }
+      .topbar .topbar-credits { display: none; } /* hide on narrow */
+      .topbar .topbar-model { font-size: 11px; padding: 4px 6px; max-width: 110px; }
+      .topbar .automode-toggle { padding: 4px 8px; font-size: 11px; }
+      .topbar .automode-toggle span:first-child { display: none; } /* hide "Auto" label */
+
+      .wallet-page, .activity-page, .catalog-page, .launch-page, .files-page {
+        padding: 14px 12px;
+      }
+      .wallet-header { padding: 12px 14px; flex-direction: column; align-items: flex-start; }
+      .wallet-header .total { margin-left: 0; }
+      .wallet-actions { gap: 6px; }
+      .wallet-actions button { padding: 8px 12px; font-size: 12px; min-height: 44px; }
+
+      .activity-page {
+        grid-template-columns: 1fr; height: auto; gap: 10px;
+      }
+      .activity-detail { max-height: 50vh; }
+
+      .files-page { grid-template-columns: 1fr; height: auto; gap: 10px; }
+      .files-tree { max-height: 40vh; }
+      .files-editor { min-height: 50vh; }
+
+      .catalog-grid { grid-template-columns: 1fr; }
+
+      .input-area { padding: 10px 12px; }
+      .input-area .plus-btn, .input-area .send-pill { min-width: 36px; min-height: 36px; }
+
+      .modal { padding: 20px 16px; }
+
+      /* Bigger touch targets across the board */
+      .nav button, .nav-link { padding: 12px 16px; min-height: 44px; }
+      .topbar .topbar-icon { width: 36px; height: 36px; }
+
+      /* Tabs scroll horizontally instead of wrapping */
+      .tabs { overflow-x: auto; flex-wrap: nowrap; }
+      .tabs button { white-space: nowrap; }
+    }
+
     /* Welcome / Gm hero / Tip card */
     .gm-hero {
       text-align: center; padding: 80px 20px 30px;
@@ -892,7 +970,8 @@
   </style>
 </head>
 <body>
-  <div class="sidebar">
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+  <div class="sidebar" id="sidebarEl">
     <div class="sb-header">
       <div class="logo">B</div>
       <h1>Bankr Helper</h1>
@@ -926,6 +1005,7 @@
 
   <div class="main">
     <div class="topbar">
+      <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" aria-label="Open menu">≡</button>
       <div class="title" id="panelTitle">Chat</div>
       <div class="spacer"></div>
       <select id="topbarModel" class="topbar-model" title="Groq model" onchange="onTopbarModelChange()">
@@ -937,6 +1017,7 @@
         <option value="mixtral-8x7b-32768">mixtral-8x7b</option>
       </select>
       <span class="topbar-credits" id="topbarCredits" title="Groq is free. Click for bankr LLM credits.">Groq · free</span>
+      <button class="topbar-icon" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark">☾</button>
       <button class="topbar-icon" id="muteBtn" onclick="toggleMute()" title="Mute reply chime">♪</button>
       <div class="automode-toggle" id="automodeToggle" onclick="toggleAutomode()">
         <span>Auto</span>
@@ -1347,6 +1428,35 @@
       } catch (_) {}
     }
 
+    // Theme — Phase 9. Sources: localStorage > system preference.
+    function getInitialTheme() {
+      const saved = localStorage.getItem("theme");
+      if (saved === "light" || saved === "dark") return saved;
+      return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    }
+    function applyTheme(t) {
+      document.documentElement.dataset.theme = t;
+      const btn = document.getElementById("themeBtn");
+      if (btn) btn.textContent = t === "light" ? "☼" : "☾";
+    }
+    function toggleTheme() {
+      const cur = document.documentElement.dataset.theme || "dark";
+      const next = cur === "light" ? "dark" : "light";
+      localStorage.setItem("theme", next);
+      applyTheme(next);
+    }
+    // Mobile sidebar toggle — Phase 9
+    function toggleSidebar() {
+      const s = document.getElementById("sidebarEl");
+      const b = document.getElementById("sidebarBackdrop");
+      const open = s.classList.toggle("open");
+      b.classList.toggle("show", open);
+    }
+    function closeSidebar() {
+      document.getElementById("sidebarEl").classList.remove("open");
+      document.getElementById("sidebarBackdrop").classList.remove("show");
+    }
+
     // Mute reply chime — localStorage persists across sessions.
     function getMuted() { return localStorage.getItem("muteChime") === "1"; }
     function toggleMute() {
@@ -1410,6 +1520,8 @@
 
     // =================== INIT ===================
     async function init() {
+      // Theme must apply BEFORE first paint to avoid a flash
+      applyTheme(getInitialTheme());
       // Honor URL hash on first paint so deep links work
       routeFromHash();
       // Pick a random tip on every chat empty-state mount
@@ -1483,6 +1595,8 @@
       if (id === "positionsPanel") renderPositionsCatalog();
       if (id === "launchesPanel") renderLaunchesList();
       if (id === "filesPanel") filesRefresh();
+      // On mobile, close the drawer after picking a panel
+      if (window.matchMedia("(max-width: 768px)").matches) closeSidebar();
       // Reflect to URL hash if we got here from a click rather than hashchange
       const hash = PANEL_TO_HASH[id];
       if (hash && location.hash !== "#/" + hash) {
