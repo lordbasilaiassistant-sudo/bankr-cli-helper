@@ -6,6 +6,7 @@ run raw CLI commands with one click, and let an auto-mode engine claim fees,
 launch tokens, and snapshot your portfolio on a schedule.
 
 ![panel](docs/screenshot.png) <!-- optional -->
+<img width="957" height="1067" alt="image" src="https://github.com/user-attachments/assets/603b0c15-657e-49e3-8f67-a70f182a4a37" />
 
 ## Why
 
